@@ -1,0 +1,135 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    - name: Setup pnpm
+      uses: pnpm/action-setup@v2
+      with:
+        version: 8
+
+    - name: Setup Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+
+    - name: Install dependencies
+      run: pnpm install
+
+    - name: Type check
+      run: pnpm type-check
+
+    - name: Lint
+      run: pnpm lint
+
+    - name: Build API
+      run: |
+        cd apps/api
+        go mod tidy
+        go build -o muzli-api .
+
+    - name: Build Web App
+      run: pnpm --filter=@muzli/web build
+
+    - name: Build Desktop App
+      run: pnpm --filter=@muzli/desktop build
+
+  build-api:
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+
+    - name: Build API binaries
+      run: |
+        cd apps/api
+        go mod tidy
+        
+        # Build for multiple platforms
+        GOOS=linux GOARCH=amd64 go build -o dist/muzli-api-linux-amd64 .
+        GOOS=darwin GOARCH=amd64 go build -o dist/muzli-api-darwin-amd64 .
+        GOOS=darwin GOARCH=arm64 go build -o dist/muzli-api-darwin-arm64 .
+        GOOS=windows GOARCH=amd64 go build -o dist/muzli-api-windows-amd64.exe .
+
+    - name: Upload API artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: api-binaries
+        path: apps/api/dist/
+
+  build-desktop:
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+
+    runs-on: ${{ matrix.os }}
+    needs: lint-and-test
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+
+    - name: Setup pnpm
+      uses: pnpm/action-setup@v2
+      with:
+        version: 8
+
+    - name: Install dependencies
+      run: pnpm install
+
+    - name: Build desktop app
+      run: |
+        pnpm --filter=@muzli/web build
+        pnpm --filter=@muzli/desktop dist
+
+    - name: Upload desktop artifacts (macOS)
+      if: matrix.os == 'macos-latest'
+      uses: actions/upload-artifact@v4
+      with:
+        name: desktop-macos
+        path: apps/desktop/release/*.dmg
+
+    - name: Upload desktop artifacts (Windows)
+      if: matrix.os == 'windows-latest'
+      uses: actions/upload-artifact@v4
+      with:
+        name: desktop-windows
+        path: apps/desktop/release/*.exe
+
+    - name: Upload desktop artifacts (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      uses: actions/upload-artifact@v4
+      with:
+        name: desktop-linux
+        path: apps/desktop/release/*.{AppImage,deb}
