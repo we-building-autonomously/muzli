@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useRef, useCallback } from "react";
 import { Canvas, useFrame, ThreeEvent } from "@react-three/fiber";
-import { OrbitControls, Html, Text } from "@react-three/drei";
+import { OrbitControls, Html, Text, Line } from "@react-three/drei";
 import * as THREE from "three";
 import {
   pca,
@@ -133,15 +133,15 @@ function NeighborLines({
     <>
       {neighborIndices.map((ni) => {
         const target = points[ni];
-        const linePoints = [
-          new THREE.Vector3(...origin),
-          new THREE.Vector3(...target),
-        ];
-        const geometry = new THREE.BufferGeometry().setFromPoints(linePoints);
         return (
-          <line key={ni} geometry={geometry}>
-            <lineBasicMaterial color="#fbbf24" opacity={0.4} transparent />
-          </line>
+          <Line
+            key={ni}
+            points={[origin, target]}
+            color="#fbbf24"
+            opacity={0.4}
+            transparent
+            lineWidth={1}
+          />
         );
       })}
     </>
