@@ -36,8 +36,8 @@ func (cd ConnectionDetails) ToConnection() *Connection {
 
 type TestConnectionRequest struct {
 	Type         string `json:"type" binding:"required"`
-	Host         string `json:"host" binding:"required"`
-	Port         int    `json:"port" binding:"omitempty,min=0,max=65535"`
+	Host         string `json:"host"`
+	Port         int    `json:"port"`
 	DatabaseName string `json:"database"`
 	Username     string `json:"username"`
 	Password     string `json:"password"`
