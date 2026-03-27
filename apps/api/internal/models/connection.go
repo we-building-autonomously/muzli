@@ -7,6 +7,7 @@ import (
 type Connection struct {
 	ID           string    `json:"id" db:"id"`
 	Name         string    `json:"name" db:"name"`
+	Type         string    `json:"type" db:"type"`
 	Host         string    `json:"host" db:"host"`
 	Port         int       `json:"port" db:"port"`
 	DatabaseName string    `json:"database" db:"database_name"`
@@ -19,6 +20,7 @@ type Connection struct {
 
 type CreateConnectionRequest struct {
 	Name         string `json:"name" binding:"required"`
+	Type         string `json:"type" binding:"required"`
 	Host         string `json:"host" binding:"required"`
 	Port         int    `json:"port" binding:"required,min=1,max=65535"`
 	DatabaseName string `json:"database" binding:"required"`
@@ -29,6 +31,7 @@ type CreateConnectionRequest struct {
 
 type UpdateConnectionRequest struct {
 	Name         string `json:"name"`
+	Type         string `json:"type"`
 	Host         string `json:"host"`
 	Port         int    `json:"port" binding:"omitempty,min=1,max=65535"`
 	DatabaseName string `json:"database"`
@@ -38,6 +41,7 @@ type UpdateConnectionRequest struct {
 }
 
 type TestConnectionRequest struct {
+	Type         string `json:"type" binding:"required"`
 	Host         string `json:"host" binding:"required"`
 	Port         int    `json:"port" binding:"required,min=1,max=65535"`
 	DatabaseName string `json:"database" binding:"required"`

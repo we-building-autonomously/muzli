@@ -37,53 +37,67 @@ export function Sidebar({
 
   return (
     <div className="h-full flex flex-col border-r">
-      <div className="p-4 border-b">
+      <div className="px-3 py-2 border-b">
         <div className="flex items-center justify-between">
-          <h2 className="font-semibold">Connections</h2>
+          <h2 className="text-sm font-semibold">Connections</h2>
           <Button
             size="sm"
             onClick={() => setIsDialogOpen(true)}
-            className="h-8 w-8 p-0"
+            className="h-6 w-6 p-0"
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="h-3.5 w-3.5" />
           </Button>
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto p-2">
-        {connections?.map((connection) => (
-          <div
-            key={connection.id}
-            className={`
-              p-3 rounded-lg cursor-pointer transition-colors mb-2
-              ${
-                selectedConnection?.id === connection.id
-                  ? "bg-accent text-accent-foreground"
-                  : "hover:bg-muted"
-              }
-            `}
-            onClick={() => onConnectionSelect(connection)}
-          >
-            <div className="flex items-center gap-2">
-              <Database className="h-4 w-4" />
-              <div className="flex-1 min-w-0">
-                <div className="font-medium truncate">{connection.name}</div>
-                <div className="text-sm text-muted-foreground truncate">
-                  {connection.host}:{connection.port}
+      <div className="flex-1 overflow-auto p-1.5">
+        {connections?.map((connection) => {
+          const isMongo = connection.type === "mongodb";
+          return (
+            <div
+              key={connection.id}
+              className={`
+                p-2 rounded-md cursor-pointer transition-colors mb-1
+                ${
+                  selectedConnection?.id === connection.id
+                    ? "bg-accent text-accent-foreground"
+                    : "hover:bg-muted"
+                }
+              `}
+              onClick={() => onConnectionSelect(connection)}
+            >
+              <div className="flex items-center gap-2">
+                <Database className={`h-3.5 w-3.5 flex-shrink-0 ${isMongo ? "text-green-500" : "text-blue-500"}`} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm font-medium truncate">{connection.name}</span>
+                    <span
+                      className={`text-[10px] font-medium px-1 py-0 rounded ${
+                        isMongo
+                          ? "bg-green-500/15 text-green-500"
+                          : "bg-blue-500/15 text-blue-500"
+                      }`}
+                    >
+                      {isMongo ? "MDB" : "PG"}
+                    </span>
+                  </div>
+                  <div className="text-xs text-muted-foreground truncate">
+                    {connection.host}:{connection.port}
+                  </div>
                 </div>
+                {isLoading && selectedConnection?.id === connection.id && (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin flex-shrink-0" />
+                )}
               </div>
-              {isLoading && selectedConnection?.id === connection.id && (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         {!connections?.length && (
-          <div className="text-center py-8 text-muted-foreground">
-            <Database className="h-8 w-8 mx-auto mb-2 opacity-50" />
-            <p className="text-sm">No connections yet</p>
-            <p className="text-xs mt-1">Click the + button to add one</p>
+          <div className="text-center py-6 text-muted-foreground">
+            <Database className="h-6 w-6 mx-auto mb-1.5 opacity-50" />
+            <p className="text-xs">No connections yet</p>
+            <p className="text-[10px] mt-0.5">Click + to add one</p>
           </div>
         )}
       </div>

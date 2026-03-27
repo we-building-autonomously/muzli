@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"strings"
 )
 
 func Migrate(db *sql.DB) error {
@@ -32,5 +33,17 @@ func Migrate(db *sql.DB) error {
 		return err
 	}
 
+	addTypeColumn := `ALTER TABLE connections ADD COLUMN type TEXT NOT NULL DEFAULT 'postgres'`
+	if _, err := db.Exec(addTypeColumn); err != nil {
+		if !isColumnAlreadyExists(err) {
+			return err
+		}
+	}
+
 	return nil
+}
+
+func isColumnAlreadyExists(err error) bool {
+	msg := err.Error()
+	return strings.Contains(msg, "duplicate column") || strings.Contains(msg, "already exists")
 }

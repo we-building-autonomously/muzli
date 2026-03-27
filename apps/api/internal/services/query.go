@@ -2,8 +2,8 @@ package services
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -13,12 +13,14 @@ import (
 )
 
 type QueryService struct {
-	connections map[string]*pgxpool.Pool
+	connections  map[string]*pgxpool.Pool
+	mongoService *MongoService
 }
 
 func NewQueryService() *QueryService {
 	return &QueryService{
-		connections: make(map[string]*pgxpool.Pool),
+		connections:  make(map[string]*pgxpool.Pool),
+		mongoService: NewMongoService(),
 	}
 }
 
@@ -57,6 +59,10 @@ func (s *QueryService) getConnection(conn *models.Connection) (*pgxpool.Pool, er
 }
 
 func (s *QueryService) TestConnection(req models.TestConnectionRequest) (*models.TestConnectionResponse, error) {
+	if req.Type == "mongodb" {
+		return s.mongoService.TestConnection(req)
+	}
+
 	conn := &models.Connection{
 		Host:         req.Host,
 		Port:         req.Port,
@@ -99,6 +105,10 @@ func (s *QueryService) ExecuteQuery(connectionID string, query string, connectio
 		return nil, fmt.Errorf("failed to get connection: %w", err)
 	}
 
+	if conn.Type == "mongodb" {
+		return s.mongoService.ExecuteQuery(connectionID, query, connectionService)
+	}
+
 	pool, err := s.getConnection(conn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
@@ -109,7 +119,6 @@ func (s *QueryService) ExecuteQuery(connectionID string, query string, connectio
 
 	startTime := time.Now()
 
-	// Check if it's a SELECT query or other query types
 	trimmedQuery := strings.TrimSpace(strings.ToLower(query))
 	isSelect := strings.HasPrefix(trimmedQuery, "select") || strings.HasPrefix(trimmedQuery, "with")
 
@@ -137,7 +146,7 @@ func (s *QueryService) executeSelectQuery(ctx context.Context, pool *pgxpool.Poo
 			for _, fd := range fieldDescriptions {
 				columns = append(columns, models.ColumnResult{
 					Name: fd.Name,
-					Type: fd.DataTypeOID.String(),
+					Type: strconv.FormatUint(uint64(fd.DataTypeOID), 10),
 				})
 			}
 		}
@@ -192,6 +201,10 @@ func (s *QueryService) GetDatabases(connectionID string, connectionService *Conn
 		return nil, fmt.Errorf("failed to get connection: %w", err)
 	}
 
+	if conn.Type == "mongodb" {
+		return s.mongoService.GetDatabases(connectionID, connectionService)
+	}
+
 	pool, err := s.getConnection(conn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
@@ -234,6 +247,10 @@ func (s *QueryService) GetSchemas(connectionID string, connectionService *Connec
 		return nil, fmt.Errorf("failed to get connection: %w", err)
 	}
 
+	if conn.Type == "mongodb" {
+		return s.mongoService.GetSchemas(connectionID, connectionService)
+	}
+
 	pool, err := s.getConnection(conn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
@@ -272,6 +289,10 @@ func (s *QueryService) GetTables(connectionID, schema string, connectionService 
 	conn, err := connectionService.GetConnection(connectionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get connection: %w", err)
+	}
+
+	if conn.Type == "mongodb" {
+		return s.mongoService.GetCollections(connectionID, connectionService)
 	}
 
 	pool, err := s.getConnection(conn)
@@ -325,6 +346,10 @@ func (s *QueryService) GetColumns(connectionID, schema, table string, connection
 	conn, err := connectionService.GetConnection(connectionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get connection: %w", err)
+	}
+
+	if conn.Type == "mongodb" {
+		return s.mongoService.GetColumns(connectionID, table, connectionService)
 	}
 
 	pool, err := s.getConnection(conn)
@@ -389,6 +414,10 @@ func (s *QueryService) GetTableData(req models.TableDataRequest, connectionServi
 	conn, err := connectionService.GetConnection(req.ConnectionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get connection: %w", err)
+	}
+
+	if conn.Type == "mongodb" {
+		return s.mongoService.GetTableData(req, connectionService)
 	}
 
 	pool, err := s.getConnection(conn)
@@ -475,4 +504,5 @@ func (s *QueryService) Close() {
 		pool.Close()
 	}
 	s.connections = make(map[string]*pgxpool.Pool)
+	s.mongoService.Close()
 }

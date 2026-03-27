@@ -16,14 +16,14 @@ export function Results({ queryResult, tableData, isLoading }: ResultsProps) {
   if (isLoading) {
     return (
       <div className="h-full flex flex-col">
-        <div className="flex items-center gap-2 p-4 border-b">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          <span>Executing query...</span>
+        <div className="flex items-center gap-2 px-3 h-10 border-b">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          <span className="text-sm">Executing query...</span>
         </div>
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center text-muted-foreground">
-            <Loader2 className="h-8 w-8 mx-auto mb-2 animate-spin" />
-            <p>Running query...</p>
+            <Loader2 className="h-6 w-6 mx-auto mb-1.5 animate-spin" />
+            <p className="text-sm">Running query...</p>
           </div>
         </div>
       </div>
@@ -33,15 +33,15 @@ export function Results({ queryResult, tableData, isLoading }: ResultsProps) {
   if (!data) {
     return (
       <div className="h-full flex flex-col">
-        <div className="flex items-center gap-2 p-4 border-b">
-          <BarChart3 className="h-4 w-4" />
-          <span>Results</span>
+        <div className="flex items-center gap-2 px-3 h-10 border-b">
+          <BarChart3 className="h-3.5 w-3.5" />
+          <span className="text-sm">Results</span>
         </div>
         <div className="flex-1 flex items-center justify-center text-muted-foreground">
           <div className="text-center">
-            <Table className="h-8 w-8 mx-auto mb-2 opacity-50" />
-            <p>No results yet</p>
-            <p className="text-sm mt-1">Execute a query to see results here</p>
+            <Table className="h-6 w-6 mx-auto mb-1.5 opacity-50" />
+            <p className="text-sm">No results yet</p>
+            <p className="text-xs mt-0.5">Execute a query to see results</p>
           </div>
         </div>
       </div>
@@ -56,26 +56,25 @@ export function Results({ queryResult, tableData, isLoading }: ResultsProps) {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex items-center justify-between p-4 border-b">
+      <div className="flex items-center justify-between px-3 h-10 border-b">
         <div className="flex items-center gap-2">
-          <BarChart3 className="h-4 w-4" />
-          <span>Results</span>
+          <BarChart3 className="h-3.5 w-3.5" />
+          <span className="text-sm">Results</span>
         </div>
 
-        <div className="flex items-center gap-4 text-sm text-muted-foreground">
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
           {isQueryResult && queryResult?.executionTime && (
-            <span>Time: {formatDuration(queryResult.executionTime)}</span>
+            <span>{formatDuration(queryResult.executionTime)}</span>
           )}
           <span>
-            Rows: {rows.length} row{rows.length !== 1 ? "s" : ""}
+            {rows.length} row{rows.length !== 1 ? "s" : ""}
           </span>
           {queryResult?.affectedRows !== undefined && (
-            <span>Affected: {queryResult.affectedRows}</span>
+            <span>{queryResult.affectedRows} affected</span>
           )}
           {tableData && (
             <span>
-              Page {tableData.page} of{" "}
-              {Math.ceil(tableData.totalRows / tableData.pageSize)}
+              p.{tableData.page}/{Math.ceil(tableData.totalRows / tableData.pageSize)}
             </span>
           )}
         </div>
@@ -83,13 +82,13 @@ export function Results({ queryResult, tableData, isLoading }: ResultsProps) {
 
       <div className="flex-1 overflow-auto">
         {rows.length === 0 ? (
-          <div className="p-8 text-center text-muted-foreground">
-            <AlertCircle className="h-8 w-8 mx-auto mb-2" />
-            <p>Query executed successfully</p>
-            <p className="text-sm mt-1">No rows returned</p>
+          <div className="p-6 text-center text-muted-foreground">
+            <AlertCircle className="h-6 w-6 mx-auto mb-1.5" />
+            <p className="text-sm">Query executed successfully</p>
+            <p className="text-xs mt-0.5">No rows returned</p>
             {queryResult?.affectedRows !== undefined &&
               queryResult.affectedRows > 0 && (
-                <p className="text-sm mt-1 text-green-400">
+                <p className="text-xs mt-0.5 text-green-400">
                   {queryResult.affectedRows} row
                   {queryResult.affectedRows !== 1 ? "s" : ""} affected
                 </p>
@@ -97,17 +96,17 @@ export function Results({ queryResult, tableData, isLoading }: ResultsProps) {
           </div>
         ) : (
           <div className="min-w-full">
-            <table className="w-full text-sm">
+            <table className="w-full text-xs">
               <thead className="bg-muted">
                 <tr>
                   {columns.map((column, index) => (
                     <th
                       key={index}
-                      className="px-4 py-2 text-left font-medium"
+                      className="px-3 py-1.5 text-left font-medium text-xs"
                     >
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5">
                         <span>{column.name}</span>
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-[10px] text-muted-foreground">
                           {column.type}
                         </span>
                       </div>
@@ -121,7 +120,7 @@ export function Results({ queryResult, tableData, isLoading }: ResultsProps) {
                     {columns.map((column, colIndex) => {
                       const value = row[column.name];
                       return (
-                        <td key={colIndex} className="px-4 py-2">
+                        <td key={colIndex} className="px-3 py-1">
                           <div className="max-w-xs truncate">
                             {value === null || value === undefined ? (
                               <span className="text-muted-foreground italic">

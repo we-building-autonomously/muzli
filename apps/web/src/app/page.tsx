@@ -34,15 +34,12 @@ function MuzliApp() {
   return (
     <div className="h-screen bg-background text-foreground">
       <div className="border-b">
-        <div className="flex h-14 items-center px-4">
-          <h1 className="text-xl font-bold">Muzli</h1>
-          <div className="ml-auto text-sm text-muted-foreground">
-            Modern Database Management Tool
-          </div>
+        <div className="flex h-10 items-center px-3">
+          <h1 className="text-sm font-bold">Muzli</h1>
         </div>
       </div>
 
-      <div className="h-[calc(100vh-3.5rem)]">
+      <div className="h-[calc(100vh-2.5rem)]">
         <PanelGroup direction="horizontal">
           <Panel defaultSize={25} minSize={20} maxSize={40}>
             <Sidebar

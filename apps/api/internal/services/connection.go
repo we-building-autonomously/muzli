@@ -18,9 +18,15 @@ func NewConnectionService(db *sql.DB) *ConnectionService {
 }
 
 func (s *ConnectionService) CreateConnection(req models.CreateConnectionRequest) (*models.Connection, error) {
+	connType := req.Type
+	if connType == "" {
+		connType = "postgres"
+	}
+
 	connection := &models.Connection{
 		ID:           uuid.New().String(),
 		Name:         req.Name,
+		Type:         connType,
 		Host:         req.Host,
 		Port:         req.Port,
 		DatabaseName: req.DatabaseName,
@@ -32,11 +38,11 @@ func (s *ConnectionService) CreateConnection(req models.CreateConnectionRequest)
 	}
 
 	query := `
-		INSERT INTO connections (id, name, host, port, database_name, username, password, ssl, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO connections (id, name, type, host, port, database_name, username, password, ssl, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
-	_, err := s.db.Exec(query, connection.ID, connection.Name, connection.Host, connection.Port,
+	_, err := s.db.Exec(query, connection.ID, connection.Name, connection.Type, connection.Host, connection.Port,
 		connection.DatabaseName, connection.Username, connection.Password, connection.SSL,
 		connection.CreatedAt, connection.UpdatedAt)
 
@@ -49,7 +55,7 @@ func (s *ConnectionService) CreateConnection(req models.CreateConnectionRequest)
 
 func (s *ConnectionService) GetConnections() ([]models.Connection, error) {
 	query := `
-		SELECT id, name, host, port, database_name, username, password, ssl, created_at, updated_at
+		SELECT id, name, type, host, port, database_name, username, password, ssl, created_at, updated_at
 		FROM connections
 		ORDER BY name ASC
 	`
@@ -63,7 +69,7 @@ func (s *ConnectionService) GetConnections() ([]models.Connection, error) {
 	var connections []models.Connection
 	for rows.Next() {
 		var conn models.Connection
-		err := rows.Scan(&conn.ID, &conn.Name, &conn.Host, &conn.Port, &conn.DatabaseName,
+		err := rows.Scan(&conn.ID, &conn.Name, &conn.Type, &conn.Host, &conn.Port, &conn.DatabaseName,
 			&conn.Username, &conn.Password, &conn.SSL, &conn.CreatedAt, &conn.UpdatedAt)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan connection: %w", err)
@@ -78,13 +84,13 @@ func (s *ConnectionService) GetConnections() ([]models.Connection, error) {
 
 func (s *ConnectionService) GetConnection(id string) (*models.Connection, error) {
 	query := `
-		SELECT id, name, host, port, database_name, username, password, ssl, created_at, updated_at
+		SELECT id, name, type, host, port, database_name, username, password, ssl, created_at, updated_at
 		FROM connections
 		WHERE id = ?
 	`
 
 	var conn models.Connection
-	err := s.db.QueryRow(query, id).Scan(&conn.ID, &conn.Name, &conn.Host, &conn.Port,
+	err := s.db.QueryRow(query, id).Scan(&conn.ID, &conn.Name, &conn.Type, &conn.Host, &conn.Port,
 		&conn.DatabaseName, &conn.Username, &conn.Password, &conn.SSL, &conn.CreatedAt, &conn.UpdatedAt)
 
 	if err != nil {
@@ -104,7 +110,9 @@ func (s *ConnectionService) UpdateConnection(id string, req models.UpdateConnect
 		return nil, err
 	}
 
-	// Update fields
+	if req.Type != "" {
+		existing.Type = req.Type
+	}
 	if req.Name != "" {
 		existing.Name = req.Name
 	}
@@ -127,12 +135,12 @@ func (s *ConnectionService) UpdateConnection(id string, req models.UpdateConnect
 	existing.UpdatedAt = time.Now()
 
 	query := `
-		UPDATE connections 
-		SET name = ?, host = ?, port = ?, database_name = ?, username = ?, password = ?, ssl = ?, updated_at = ?
+		UPDATE connections
+		SET name = ?, type = ?, host = ?, port = ?, database_name = ?, username = ?, password = ?, ssl = ?, updated_at = ?
 		WHERE id = ?
 	`
 
-	_, err = s.db.Exec(query, existing.Name, existing.Host, existing.Port, existing.DatabaseName,
+	_, err = s.db.Exec(query, existing.Name, existing.Type, existing.Host, existing.Port, existing.DatabaseName,
 		existing.Username, existing.Password, existing.SSL, existing.UpdatedAt, id)
 
 	if err != nil {

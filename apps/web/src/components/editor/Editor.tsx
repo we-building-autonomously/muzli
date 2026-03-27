@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Play, Loader2, Database } from "lucide-react";
 import dynamic from "next/dynamic";
@@ -11,11 +11,22 @@ import type { DatabaseConnection, QueryResult } from "@/types";
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
   ssr: false,
   loading: () => (
-    <div className="h-full flex items-center justify-center text-muted-foreground">
+    <div className="h-full flex items-center justify-center text-muted-foreground text-xs">
       Loading editor...
     </div>
   ),
 });
+
+const SQL_DEFAULT = "-- Welcome to Muzli!\n-- Write your SQL queries here\n\nSELECT version();";
+
+const MONGO_DEFAULT = `// MongoDB Query
+// Write your query as JSON
+{
+  "collection": "users",
+  "operation": "find",
+  "filter": {},
+  "limit": 50
+}`;
 
 interface EditorProps {
   selectedConnection: DatabaseConnection | null;
@@ -30,9 +41,14 @@ export function Editor({
   isLoading,
   setIsLoading,
 }: EditorProps) {
-  const [query, setQuery] = useState(
-    "-- Welcome to Muzli!\n-- Write your SQL queries here\n\nSELECT version();"
-  );
+  const isMongo = selectedConnection?.type === "mongodb";
+  const [query, setQuery] = useState(SQL_DEFAULT);
+
+  useEffect(() => {
+    if (selectedConnection) {
+      setQuery(isMongo ? MONGO_DEFAULT : SQL_DEFAULT);
+    }
+  }, [selectedConnection?.id, isMongo]);
 
   const executeMutation = useMutation({
     mutationFn: () => {
@@ -57,13 +73,13 @@ export function Editor({
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex items-center justify-between p-4 border-b">
+      <div className="flex items-center justify-between px-3 h-10 border-b">
         <div className="flex items-center gap-2">
-          <h3 className="font-semibold">Query Editor</h3>
+          <h3 className="text-sm font-medium">Query Editor</h3>
           {selectedConnection && (
-            <div className="flex items-center gap-1 text-sm text-muted-foreground">
+            <div className="flex items-center gap-1 text-xs text-muted-foreground">
               <Database className="h-3 w-3" />
-              {selectedConnection.name}
+              {isMongo ? "MongoDB" : selectedConnection.name}
             </div>
           )}
         </div>
@@ -72,15 +88,16 @@ export function Editor({
           onClick={handleExecute}
           disabled={!selectedConnection || !query.trim() || isLoading}
           size="sm"
+          className="h-7 text-xs px-2.5"
         >
           {isLoading ? (
             <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
               Running...
             </>
           ) : (
             <>
-              <Play className="mr-2 h-4 w-4" />
+              <Play className="mr-1.5 h-3 w-3" />
               Run Query
             </>
           )}
@@ -91,18 +108,18 @@ export function Editor({
         {selectedConnection ? (
           <MonacoEditor
             height="100%"
-            language="sql"
+            language={isMongo ? "json" : "sql"}
             theme="vs-dark"
             value={query}
             onChange={(value) => setQuery(value || "")}
             options={{
               minimap: { enabled: false },
-              fontSize: 14,
+              fontSize: 13,
               lineNumbers: "on",
               wordWrap: "on",
               automaticLayout: true,
               scrollBeyondLastLine: false,
-              padding: { top: 16, bottom: 16 },
+              padding: { top: 12, bottom: 12 },
               suggestOnTriggerCharacters: true,
               quickSuggestions: true,
               parameterHints: { enabled: true },
@@ -120,10 +137,10 @@ export function Editor({
         ) : (
           <div className="h-full flex items-center justify-center text-muted-foreground">
             <div className="text-center">
-              <Database className="h-8 w-8 mx-auto mb-2 opacity-50" />
-              <p>Select a connection to start writing queries</p>
-              <p className="text-sm mt-1">
-                Connect to a PostgreSQL database from the sidebar
+              <Database className="h-6 w-6 mx-auto mb-1.5 opacity-50" />
+              <p className="text-sm">Select a connection to start</p>
+              <p className="text-xs mt-0.5">
+                Connect to a database from the sidebar
               </p>
             </div>
           </div>
@@ -131,8 +148,8 @@ export function Editor({
       </div>
 
       {selectedConnection && (
-        <div className="px-4 py-2 border-t text-xs text-muted-foreground">
-          Press Ctrl+Enter (Cmd+Enter on Mac) to execute query
+        <div className="px-3 py-1.5 border-t text-xs text-muted-foreground">
+          Press Ctrl+Enter (Cmd+Enter on Mac) to execute
         </div>
       )}
     </div>

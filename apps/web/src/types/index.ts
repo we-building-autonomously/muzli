@@ -1,6 +1,7 @@
 export interface DatabaseConnection {
   id: string;
   name: string;
+  type: "postgres" | "mongodb";
   host: string;
   port: number;
   database: string;
@@ -13,6 +14,7 @@ export interface DatabaseConnection {
 
 export interface CreateConnectionData {
   name: string;
+  type: "postgres" | "mongodb";
   host: string;
   port: number;
   database: string;
@@ -22,6 +24,7 @@ export interface CreateConnectionData {
 }
 
 export interface TestConnectionData {
+  type: "postgres" | "mongodb";
   host: string;
   port: number;
   database: string;
