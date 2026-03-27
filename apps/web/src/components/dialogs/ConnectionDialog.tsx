@@ -119,7 +119,7 @@ const DB_CONFIGS = {
     databaseLabel: "",
     databasePlaceholder: "",
     usernamePlaceholder: "",
-    showHost: true,
+    showHost: false,
     showPort: false,
     showDatabase: false,
     showUsername: false,
