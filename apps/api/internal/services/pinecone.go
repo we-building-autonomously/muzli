@@ -193,13 +193,15 @@ func (s *PineconeService) ExecuteQuery(connectionID, query string, connectionSer
 
 	// Resolve the data plane host
 	indexName, _ := parsed["index"].(string)
-	host := client.host
+	var host string
 	if indexName != "" {
 		resolved, err := client.resolveHost(ctx, indexName)
 		if err != nil {
 			return nil, err
 		}
 		host = resolved
+	} else if client.host != "" && client.host != pineconeControlPlane {
+		host = client.host
 	}
 
 	var result map[string]interface{}
