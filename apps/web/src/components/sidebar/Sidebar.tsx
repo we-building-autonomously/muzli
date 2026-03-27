@@ -133,7 +133,7 @@ export function Sidebar({
     }
   }, [loadingTree]);
 
-  const loadNamespaces = useCallback(async (conn: DatabaseConnection, indexName: string) => {
+  const loadNamespaces = useCallback(async (conn: DatabaseConnection, indexName: string, indexHost: string) => {
     setVectorTree((prev) => {
       const items = prev[conn.id]?.map((idx) =>
         idx.name === indexName ? { ...idx, loading: true } : idx
@@ -142,7 +142,9 @@ export function Sidebar({
     });
 
     try {
-      const schemas = await apiClient.getSchemas(conn);
+      // Pass the index's data plane host so the backend can call describe_index_stats
+      const connWithHost = { ...conn, host: indexHost };
+      const schemas = await apiClient.getSchemas(connWithHost);
       const namespaces = schemas.map((s) => s.name || "(default)");
 
       setVectorTree((prev) => {
@@ -180,7 +182,7 @@ export function Sidebar({
     });
   };
 
-  const toggleIndex = (conn: DatabaseConnection, indexName: string) => {
+  const toggleIndex = (conn: DatabaseConnection, indexName: string, indexHost: string) => {
     const items = vectorTree[conn.id];
     const idx = items?.find((i) => i.name === indexName);
     if (idx?.expanded) {
@@ -191,7 +193,7 @@ export function Sidebar({
         return { ...prev, [conn.id]: updated || [] };
       });
     } else if (!idx?.namespaces.length) {
-      loadNamespaces(conn, indexName);
+      loadNamespaces(conn, indexName, indexHost);
     } else {
       setVectorTree((prev) => {
         const updated = prev[conn.id]?.map((i) =>
@@ -338,7 +340,7 @@ export function Sidebar({
                             `}
                             onClick={(e) => {
                               e.stopPropagation();
-                              toggleIndex(connection, idx.name);
+                              toggleIndex(connection, idx.name, idx.host);
                               handleIndexClick(connection.id, idx);
                             }}
                           >
