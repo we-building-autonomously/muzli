@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Loader2, CheckCircle, XCircle } from "lucide-react";
+import { Loader2, CheckCircle, XCircle, Database, Globe, Key, Server, HardDrive, Folder } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -23,6 +23,130 @@ interface ConnectionDialogProps {
   onOpenChange: (open: boolean) => void;
   onConnectionCreated: () => void;
 }
+
+const DB_CONFIGS = {
+  postgres: {
+    label: "PostgreSQL",
+    icon: "🐘",
+    defaultPort: 5432,
+    hostLabel: "Host",
+    hostPlaceholder: "localhost",
+    databaseLabel: "Database",
+    databasePlaceholder: "myapp",
+    usernamePlaceholder: "postgres",
+    showHost: true,
+    showPort: true,
+    showDatabase: true,
+    showUsername: true,
+    showPassword: true,
+    showSsl: true,
+    passwordLabel: "Password",
+  },
+  mongodb: {
+    label: "MongoDB",
+    icon: "🍃",
+    defaultPort: 27017,
+    hostLabel: "Host",
+    hostPlaceholder: "localhost",
+    databaseLabel: "Database",
+    databasePlaceholder: "mydb",
+    usernamePlaceholder: "admin",
+    showHost: true,
+    showPort: true,
+    showDatabase: true,
+    showUsername: true,
+    showPassword: true,
+    showSsl: true,
+    passwordLabel: "Password",
+  },
+  mysql: {
+    label: "MySQL",
+    icon: "🐬",
+    defaultPort: 3306,
+    hostLabel: "Host",
+    hostPlaceholder: "localhost",
+    databaseLabel: "Database",
+    databasePlaceholder: "myapp",
+    usernamePlaceholder: "root",
+    showHost: true,
+    showPort: true,
+    showDatabase: true,
+    showUsername: true,
+    showPassword: true,
+    showSsl: true,
+    passwordLabel: "Password",
+  },
+  sqlite: {
+    label: "SQLite",
+    icon: "📄",
+    defaultPort: 0,
+    hostLabel: "File Path",
+    hostPlaceholder: "/path/to/database.db",
+    databaseLabel: "Database",
+    databasePlaceholder: "main",
+    usernamePlaceholder: "",
+    showHost: true,
+    showPort: false,
+    showDatabase: false,
+    showUsername: false,
+    showPassword: false,
+    showSsl: false,
+    passwordLabel: "Password",
+  },
+  redis: {
+    label: "Redis",
+    icon: "⚡",
+    defaultPort: 6379,
+    hostLabel: "Host",
+    hostPlaceholder: "localhost",
+    databaseLabel: "Database (0-15)",
+    databasePlaceholder: "0",
+    usernamePlaceholder: "",
+    showHost: true,
+    showPort: true,
+    showDatabase: true,
+    showUsername: false,
+    showPassword: true,
+    showSsl: true,
+    passwordLabel: "Password",
+  },
+  pinecone: {
+    label: "Pinecone",
+    icon: "🌲",
+    defaultPort: 443,
+    hostLabel: "Index Host",
+    hostPlaceholder: "index-abc1234.svc.pinecone.io",
+    databaseLabel: "",
+    databasePlaceholder: "",
+    usernamePlaceholder: "",
+    showHost: true,
+    showPort: false,
+    showDatabase: false,
+    showUsername: false,
+    showPassword: true,
+    showSsl: false,
+    passwordLabel: "API Key",
+  },
+  turbopuffer: {
+    label: "Turbopuffer",
+    icon: "🔮",
+    defaultPort: 443,
+    hostLabel: "API Host",
+    hostPlaceholder: "api.turbopuffer.com",
+    databaseLabel: "Namespace",
+    databasePlaceholder: "my-namespace",
+    usernamePlaceholder: "",
+    showHost: true,
+    showPort: false,
+    showDatabase: true,
+    showUsername: false,
+    showPassword: true,
+    showSsl: false,
+    passwordLabel: "API Key",
+  },
+} as const;
+
+type DbType = keyof typeof DB_CONFIGS;
 
 export function ConnectionDialog({
   open,
@@ -45,24 +169,19 @@ export function ConnectionDialog({
     message: string;
   }>({ status: null, message: "" });
 
-  const dbTypes = [
-    { value: "postgres" as const, label: "PostgreSQL", port: 5432 },
-    { value: "mongodb" as const, label: "MongoDB", port: 27017 },
-    { value: "mysql" as const, label: "MySQL", port: 3306 },
-    { value: "sqlite" as const, label: "SQLite", port: 0 },
-    { value: "redis" as const, label: "Redis", port: 6379 },
-    { value: "pinecone" as const, label: "Pinecone", port: 443 },
-    { value: "turbopuffer" as const, label: "Turbopuffer", port: 443 },
-  ];
+  const config = DB_CONFIGS[formData.type as DbType] || DB_CONFIGS.postgres;
 
-  const isVectorDb = formData.type === "pinecone" || formData.type === "turbopuffer";
-
-  const handleTypeChange = (type: "postgres" | "mongodb" | "mysql" | "sqlite" | "redis" | "pinecone" | "turbopuffer") => {
-    const dbType = dbTypes.find((t) => t.value === type);
+  const handleTypeChange = (type: DbType) => {
+    const cfg = DB_CONFIGS[type];
     setFormData((prev) => ({
       ...prev,
       type,
-      port: dbType?.port ?? 5432,
+      port: cfg.defaultPort,
+      host: type === "sqlite" ? "" : type === "turbopuffer" ? "api.turbopuffer.com" : "localhost",
+      username: "",
+      password: "",
+      database: "",
+      ssl: type === "pinecone" || type === "turbopuffer",
     }));
     setTestResult({ status: null, message: "" });
   };
@@ -76,10 +195,7 @@ export function ConnectionDialog({
       });
     },
     onError: (error: Error) => {
-      setTestResult({
-        status: "error",
-        message: error.message,
-      });
+      setTestResult({ status: "error", message: error.message });
     },
   });
 
@@ -110,191 +226,157 @@ export function ConnectionDialog({
     createMutation.mutate();
   };
 
+  const isVectorDb = formData.type === "pinecone" || formData.type === "turbopuffer";
   const isFormValid =
-    formData.name && formData.host && (formData.type === "redis" || isVectorDb || formData.database) && (formData.type === "sqlite" || formData.type === "redis" || isVectorDb || formData.username);
+    formData.name &&
+    formData.host &&
+    (formData.type === "redis" || isVectorDb || formData.type === "sqlite" || formData.database) &&
+    (formData.type === "sqlite" || formData.type === "redis" || isVectorDb || formData.username);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[480px]">
-        <DialogHeader className="pb-2">
-          <DialogTitle className="text-base">New Connection</DialogTitle>
-          <DialogDescription className="text-xs">
-            Create a new database connection.
+      <DialogContent className="sm:max-w-[440px]">
+        <DialogHeader className="pb-1">
+          <DialogTitle>New Connection</DialogTitle>
+          <DialogDescription>
+            Connect to a database or vector store.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-3 py-2">
-          {/* Database Type Toggle */}
-          <div className="grid gap-1.5">
-            <Label className="text-xs">Database Type</Label>
-            <div className="flex gap-1 p-0.5 bg-muted rounded-md w-fit flex-wrap">
-              {dbTypes.map((dbType) => (
-                <button
-                  key={dbType.value}
-                  type="button"
-                  onClick={() => handleTypeChange(dbType.value)}
-                  className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
-                    formData.type === dbType.value
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {dbType.label}
-                </button>
-              ))}
+        <div className="grid gap-2.5 py-1">
+          {/* Database Type Selector */}
+          <div className="grid gap-1">
+            <Label className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">Type</Label>
+            <div className="grid grid-cols-4 gap-1">
+              {(Object.keys(DB_CONFIGS) as DbType[]).map((type) => {
+                const cfg = DB_CONFIGS[type];
+                return (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => handleTypeChange(type)}
+                    className={`flex items-center gap-1.5 px-2 py-1.5 text-[11px] font-medium rounded-md transition-all ${
+                      formData.type === type
+                        ? "bg-primary/15 text-primary border border-primary/30 shadow-sm"
+                        : "bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted border border-transparent"
+                    }`}
+                  >
+                    <span className="text-sm">{cfg.icon}</span>
+                    <span className="truncate">{cfg.label}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          <div className="grid gap-1.5">
-            <Label htmlFor="name" className="text-xs">Connection Name</Label>
+          {/* Connection Name */}
+          <div className="grid gap-1">
+            <Label className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">Name</Label>
             <Input
-              id="name"
-              className="h-8 text-sm"
               value={formData.name}
-              onChange={(e) =>
-                setFormData((prev) => ({ ...prev, name: e.target.value }))
-              }
-              placeholder={formData.type === "sqlite" ? "My SQLite DB" : formData.type === "redis" ? "My Redis" : formData.type === "mysql" ? "My MySQL DB" : formData.type === "mongodb" ? "My MongoDB" : "My PostgreSQL DB"}
+              onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
+              placeholder={`My ${config.label}`}
             />
           </div>
 
-          <div className="grid grid-cols-3 gap-2">
-            <div className="col-span-2">
-              <Label htmlFor="host" className="text-xs">Host</Label>
+          {/* Host + Port */}
+          {config.showHost && (
+            <div className={`grid gap-2 ${config.showPort ? "grid-cols-[1fr_80px]" : ""}`}>
+              <div className="grid gap-1">
+                <Label className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">{config.hostLabel}</Label>
+                <Input
+                  value={formData.host}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, host: e.target.value }))}
+                  placeholder={config.hostPlaceholder}
+                />
+              </div>
+              {config.showPort && (
+                <div className="grid gap-1">
+                  <Label className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">Port</Label>
+                  <Input
+                    type="number"
+                    value={formData.port}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        port: parseInt(e.target.value) || config.defaultPort,
+                      }))
+                    }
+                    placeholder={String(config.defaultPort)}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Database */}
+          {config.showDatabase && (
+            <div className="grid gap-1">
+              <Label className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">{config.databaseLabel}</Label>
               <Input
-                id="host"
-                className="h-8 text-sm"
-                value={formData.host}
-                onChange={(e) =>
-                  setFormData((prev) => ({ ...prev, host: e.target.value }))
+                value={formData.database}
+                onChange={(e) => setFormData((prev) => ({ ...prev, database: e.target.value }))}
+                placeholder={config.databasePlaceholder}
+              />
+            </div>
+          )}
+
+          {/* Username + Password */}
+          {(config.showUsername || config.showPassword) && (
+            <div className={`grid gap-2 ${config.showUsername && config.showPassword ? "grid-cols-2" : ""}`}>
+              {config.showUsername && (
+                <div className="grid gap-1">
+                  <Label className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">Username</Label>
+                  <Input
+                    value={formData.username}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, username: e.target.value }))}
+                    placeholder={config.usernamePlaceholder}
+                  />
+                </div>
+              )}
+              {config.showPassword && (
+                <div className="grid gap-1">
+                  <Label className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">{config.passwordLabel}</Label>
+                  <Input
+                    type="password"
+                    value={formData.password}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, password: e.target.value }))}
+                    placeholder={isVectorDb ? "sk-..." : "••••••••"}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* SSL */}
+          {config.showSsl && (
+            <div className="flex items-center gap-2 pt-0.5">
+              <Switch
+                id="ssl"
+                checked={formData.ssl}
+                onCheckedChange={(checked) =>
+                  setFormData((prev) => ({ ...prev, ssl: checked }))
                 }
-                placeholder={formData.type === "sqlite" ? "/path/to/database.db" : formData.type === "pinecone" ? "index-name-abc1234.svc.pinecone.io" : formData.type === "turbopuffer" ? "api.turbopuffer.com" : "localhost"}
               />
+              <Label htmlFor="ssl" className="text-xs text-muted-foreground">Use SSL / TLS</Label>
             </div>
-            {formData.type !== "sqlite" && (
-            <div>
-              <Label htmlFor="port" className="text-xs">Port</Label>
-              <Input
-                id="port"
-                className="h-8 text-sm"
-                type="number"
-                value={formData.port}
-                onChange={(e) => {
-                  const defaultPort = dbTypes.find((t) => t.value === formData.type)?.port ?? 5432;
-                  setFormData((prev) => ({
-                    ...prev,
-                    port: parseInt(e.target.value) || defaultPort,
-                  }));
-                }}
-                placeholder={String(dbTypes.find((t) => t.value === formData.type)?.port ?? 5432)}
-              />
-            </div>
-            )}
-          </div>
-
-          {!isVectorDb && (
-          <div className="grid gap-1.5">
-            <Label htmlFor="database" className="text-xs">{formData.type === "redis" ? "Database (0-15)" : formData.type === "turbopuffer" ? "Namespace" : "Database"}</Label>
-            <Input
-              id="database"
-              className="h-8 text-sm"
-              value={formData.database}
-              onChange={(e) =>
-                setFormData((prev) => ({ ...prev, database: e.target.value }))
-              }
-              placeholder={formData.type === "mongodb" ? "mydb" : formData.type === "redis" ? "0" : formData.type === "turbopuffer" ? "my-namespace" : formData.type === "sqlite" ? "main" : "myapp"}
-            />
-          </div>
           )}
 
-          {formData.type === "turbopuffer" && (
-          <div className="grid gap-1.5">
-            <Label htmlFor="database" className="text-xs">Namespace</Label>
-            <Input
-              id="database"
-              className="h-8 text-sm"
-              value={formData.database}
-              onChange={(e) =>
-                setFormData((prev) => ({ ...prev, database: e.target.value }))
-              }
-              placeholder="my-namespace"
-            />
-          </div>
-          )}
-
-          {formData.type !== "sqlite" && !isVectorDb && (
-          <div className="grid grid-cols-2 gap-2">
-            {formData.type !== "redis" && (
-            <div>
-              <Label htmlFor="username" className="text-xs">Username</Label>
-              <Input
-                id="username"
-                className="h-8 text-sm"
-                value={formData.username}
-                onChange={(e) =>
-                  setFormData((prev) => ({ ...prev, username: e.target.value }))
-                }
-                placeholder={formData.type === "mongodb" ? "admin" : formData.type === "mysql" ? "root" : "postgres"}
-              />
-            </div>
-            )}
-            <div>
-              <Label htmlFor="password" className="text-xs">Password</Label>
-              <Input
-                id="password"
-                className="h-8 text-sm"
-                type="password"
-                value={formData.password}
-                onChange={(e) =>
-                  setFormData((prev) => ({ ...prev, password: e.target.value }))
-                }
-                placeholder="password"
-              />
-            </div>
-          </div>
-          )}
-
-          {isVectorDb && (
-          <div className="grid gap-1.5">
-            <Label htmlFor="password" className="text-xs">API Key</Label>
-            <Input
-              id="password"
-              className="h-8 text-sm"
-              type="password"
-              value={formData.password}
-              onChange={(e) =>
-                setFormData((prev) => ({ ...prev, password: e.target.value }))
-              }
-              placeholder={formData.type === "pinecone" ? "pc-..." : "tbpf-..."}
-            />
-          </div>
-          )}
-
-          <div className="flex items-center space-x-2">
-            <Switch
-              id="ssl"
-              checked={formData.ssl}
-              onCheckedChange={(checked) =>
-                setFormData((prev) => ({ ...prev, ssl: checked }))
-              }
-            />
-            <Label htmlFor="ssl" className="text-xs">Use SSL</Label>
-          </div>
-
+          {/* Test Result */}
           {testResult.status && (
             <div
-              className={`flex items-center gap-2 p-2 rounded-md text-xs ${
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] ${
                 testResult.status === "success"
-                  ? "bg-green-500/10 text-green-500 border border-green-500/20"
-                  : "bg-red-500/10 text-red-500 border border-red-500/20"
+                  ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                  : "bg-red-500/10 text-red-400 border border-red-500/20"
               }`}
             >
               {testResult.status === "success" ? (
-                <CheckCircle className="h-3.5 w-3.5" />
+                <CheckCircle className="h-3 w-3 flex-shrink-0" />
               ) : (
-                <XCircle className="h-3.5 w-3.5" />
+                <XCircle className="h-3 w-3 flex-shrink-0" />
               )}
-              <span>{testResult.message}</span>
+              <span className="truncate">{testResult.message}</span>
             </div>
           )}
         </div>
@@ -310,15 +392,15 @@ export function ConnectionDialog({
             >
               {testMutation.isPending ? (
                 <>
-                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                  Testing...
+                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                  Testing…
                 </>
               ) : (
-                "Test Connection"
+                "Test"
               )}
             </Button>
 
-            <div className="flex gap-2">
+            <div className="flex gap-1.5">
               <Button
                 type="button"
                 variant="outline"
@@ -339,11 +421,11 @@ export function ConnectionDialog({
               >
                 {createMutation.isPending ? (
                   <>
-                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                    Creating...
+                    <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                    Creating…
                   </>
                 ) : (
-                  "Create Connection"
+                  "Connect"
                 )}
               </Button>
             </div>
