@@ -36,7 +36,19 @@ function buildPineconeDefault(ctx?: VectorSearchContext | null) {
   "vector": [0.1, 0.2, 0.3],
   "topK": 10,
   "includeMetadata": true,
-  "includeValues": false
+  "includeValues": true
+}`;
+}
+
+function buildTurbopufferDefault(ctx?: VectorSearchContext | null) {
+  const ns = ctx?.index || "my-namespace";
+  return `{
+  "operation": "query",
+  "namespace": "${ns}",
+  "vector": [0.1, 0.2, 0.3],
+  "top_k": 10,
+  "include_vectors": true,
+  "include_attributes": true
 }`;
 }
 
@@ -47,6 +59,7 @@ const PINECONE_LIST_INDEXES = `{
 interface EditorProps {
   selectedConnection: DatabaseConnection | null;
   onQueryExecute: (result: QueryResult) => void;
+  onError?: (error: string) => void;
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
   vectorContext?: VectorSearchContext | null;
@@ -55,13 +68,16 @@ interface EditorProps {
 export function Editor({
   selectedConnection,
   onQueryExecute,
+  onError,
   isLoading,
   setIsLoading,
   vectorContext,
 }: EditorProps) {
   const isMongo = selectedConnection?.type === "mongodb";
-  const isPinecone = selectedConnection?.type === "pinecone" || selectedConnection?.type === "turbopuffer";
-  const isJson = isMongo || isPinecone;
+  const isPinecone = selectedConnection?.type === "pinecone";
+  const isTurbopuffer = selectedConnection?.type === "turbopuffer";
+  const isVectorDb = isPinecone || isTurbopuffer;
+  const isJson = isMongo || isVectorDb;
 
   const [query, setQuery] = useState(SQL_DEFAULT);
 
@@ -69,19 +85,24 @@ export function Editor({
     if (!selectedConnection) return;
     if (isPinecone) {
       setQuery(buildPineconeDefault(vectorContext));
+    } else if (isTurbopuffer) {
+      setQuery(buildTurbopufferDefault(vectorContext));
     } else if (isMongo) {
       setQuery(MONGO_DEFAULT);
     } else {
       setQuery(SQL_DEFAULT);
     }
-  }, [selectedConnection?.id, isMongo, isPinecone]);
+  }, [selectedConnection?.id, isMongo, isPinecone, isTurbopuffer]);
 
   // Update query when vector context changes (index/namespace selected in sidebar)
   useEffect(() => {
-    if (isPinecone && vectorContext) {
+    if (!vectorContext) return;
+    if (isPinecone) {
       setQuery(buildPineconeDefault(vectorContext));
+    } else if (isTurbopuffer) {
+      setQuery(buildTurbopufferDefault(vectorContext));
     }
-  }, [vectorContext?.index, vectorContext?.namespace, isPinecone]);
+  }, [vectorContext?.index, vectorContext?.namespace, isPinecone, isTurbopuffer]);
 
   const executeMutation = useMutation({
     mutationFn: () => {
@@ -93,7 +114,7 @@ export function Editor({
       setIsLoading(false);
     },
     onError: (error: Error) => {
-      console.error("Query execution failed:", error);
+      onError?.(error.message);
       setIsLoading(false);
     },
   });
@@ -104,14 +125,14 @@ export function Editor({
     executeMutation.mutate();
   };
 
-  const editorLabel = isPinecone
+  const editorLabel = isVectorDb
     ? "Vector Search"
     : isMongo
       ? "MongoDB"
       : selectedConnection?.name || "";
 
-  const buttonLabel = isPinecone ? "Search" : "Run Query";
-  const buttonIcon = isPinecone ? (
+  const buttonLabel = isVectorDb ? "Search" : "Run Query";
+  const buttonIcon = isVectorDb ? (
     <Search className="mr-1.5 h-3 w-3" />
   ) : (
     <Play className="mr-1.5 h-3 w-3" />
@@ -121,12 +142,12 @@ export function Editor({
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between px-3 h-10 border-b">
         <div className="flex items-center gap-2">
-          <h3 className="text-sm font-medium">{isPinecone ? "Vector Query" : "Query Editor"}</h3>
+          <h3 className="text-sm font-medium">{isVectorDb ? "Vector Query" : "Query Editor"}</h3>
           {selectedConnection && (
             <div className="flex items-center gap-1 text-xs text-muted-foreground">
               <Database className="h-3 w-3" />
               {editorLabel}
-              {vectorContext?.index && isPinecone && (
+              {vectorContext?.index && isVectorDb && (
                 <span className="text-teal-400">
                   / {vectorContext.index}
                   {vectorContext.namespace ? ` / ${vectorContext.namespace}` : ""}
@@ -149,6 +170,20 @@ export function Editor({
               className="h-7 text-xs px-2.5"
             >
               List Indexes
+            </Button>
+          )}
+          {isTurbopuffer && (
+            <Button
+              onClick={() => {
+                setQuery('{\n  "operation": "list_namespaces"\n}');
+                setTimeout(handleExecute, 50);
+              }}
+              disabled={!selectedConnection || isLoading}
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs px-2.5"
+            >
+              List Namespaces
             </Button>
           )}
           <Button

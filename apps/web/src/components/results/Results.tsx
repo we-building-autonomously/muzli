@@ -16,9 +16,10 @@ interface ResultsProps {
   tableData: TableData | null;
   isLoading: boolean;
   connectionType?: string;
+  error?: string | null;
 }
 
-export function Results({ queryResult, tableData, isLoading, connectionType }: ResultsProps) {
+export function Results({ queryResult, tableData, isLoading, connectionType, error }: ResultsProps) {
   const [view, setView] = useState<"table" | "3d">("table");
   const data = queryResult || tableData;
 
@@ -49,6 +50,23 @@ export function Results({ queryResult, tableData, isLoading, connectionType }: R
           <div className="text-center text-muted-foreground">
             <Loader2 className="h-6 w-6 mx-auto mb-1.5 animate-spin" />
             <p className="text-sm">Running query...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="h-full flex flex-col">
+        <div className="flex items-center gap-2 px-3 h-10 border-b">
+          <AlertCircle className="h-3.5 w-3.5 text-red-400" />
+          <span className="text-sm text-red-400">Error</span>
+        </div>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center max-w-md px-4">
+            <AlertCircle className="h-6 w-6 mx-auto mb-1.5 text-red-400" />
+            <p className="text-sm text-red-400 break-words">{error}</p>
           </div>
         </div>
       </div>

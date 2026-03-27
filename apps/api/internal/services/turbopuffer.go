@@ -127,6 +127,50 @@ func (s *TurbopufferService) ExecuteQuery(connectionID, query string, connection
 		return nil, fmt.Errorf("query must include 'operation' field (query, upsert, delete)")
 	}
 
+	var respBody json.RawMessage
+
+	// Handle list_namespaces before namespace resolution
+	if operation == "list_namespaces" {
+		respBody, err = client.do(ctx, "GET", "/namespaces", nil)
+		if err != nil {
+			return nil, err
+		}
+
+		executionTime := time.Since(startTime).Seconds() * 1000
+		var result interface{}
+		json.Unmarshal(respBody, &result)
+
+		rows := []models.RowResult{}
+		columns := []models.ColumnResult{
+			{Name: "id", Type: "string"},
+			{Name: "dimensions", Type: "int"},
+			{Name: "approx_count", Type: "int"},
+			{Name: "distance_metric", Type: "string"},
+		}
+
+		if resultMap, ok := result.(map[string]interface{}); ok {
+			if namespaces, ok := resultMap["namespaces"].([]interface{}); ok {
+				for _, ns := range namespaces {
+					if nsMap, ok := ns.(map[string]interface{}); ok {
+						rows = append(rows, models.RowResult{
+							"id":              nsMap["id"],
+							"dimensions":      nsMap["dimensions"],
+							"approx_count":    nsMap["approx_count"],
+							"distance_metric": nsMap["distance_metric"],
+						})
+					}
+				}
+			}
+		}
+
+		return &models.QueryResult{
+			Columns:       columns,
+			Rows:          rows,
+			RowCount:      len(rows),
+			ExecutionTime: executionTime,
+		}, nil
+	}
+
 	namespace := conn.DatabaseName
 	if ns, ok := parsed["namespace"].(string); ok && ns != "" {
 		namespace = ns
@@ -134,8 +178,6 @@ func (s *TurbopufferService) ExecuteQuery(connectionID, query string, connection
 	if namespace == "" {
 		return nil, fmt.Errorf("namespace is required (set in connection or query)")
 	}
-
-	var respBody json.RawMessage
 
 	switch operation {
 	case "query":

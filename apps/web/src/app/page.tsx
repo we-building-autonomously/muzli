@@ -18,6 +18,7 @@ function MuzliApp() {
   const [isLoading, setIsLoading] = useState(false);
   const [restoredConnectionId, setRestoredConnectionId] = useState<string | null>(null);
   const [vectorContext, setVectorContext] = useState<VectorSearchContext | null>(null);
+  const [queryError, setQueryError] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -40,6 +41,13 @@ function MuzliApp() {
 
   const handleQueryExecute = (result: QueryResult) => {
     setQueryResult(result);
+    setTableData(null);
+    setQueryError(null);
+  };
+
+  const handleQueryError = (error: string) => {
+    setQueryError(error);
+    setQueryResult(null);
     setTableData(null);
   };
 
@@ -82,6 +90,7 @@ function MuzliApp() {
                 <Editor
                   selectedConnection={selectedConnection}
                   onQueryExecute={handleQueryExecute}
+                  onError={handleQueryError}
                   isLoading={isLoading}
                   setIsLoading={setIsLoading}
                   vectorContext={vectorContext}
@@ -96,6 +105,7 @@ function MuzliApp() {
                   tableData={tableData}
                   isLoading={isLoading}
                   connectionType={selectedConnection?.type}
+                  error={queryError}
                 />
               </Panel>
             </PanelGroup>
