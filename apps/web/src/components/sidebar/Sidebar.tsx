@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Plus, Database, Loader2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -8,12 +8,23 @@ import { ConnectionDialog } from "@/components/dialogs/ConnectionDialog";
 import { apiClient } from "@/api/client";
 import type { DatabaseConnection, TableData } from "@/types";
 
+const DB_LABELS: Record<string, { label: string; color: string }> = {
+  postgres: { label: "PG", color: "bg-emerald-500/15 text-emerald-400" },
+  mongodb: { label: "MDB", color: "bg-green-500/15 text-green-400" },
+  mysql: { label: "MY", color: "bg-sky-500/15 text-sky-400" },
+  sqlite: { label: "SQ", color: "bg-amber-500/15 text-amber-400" },
+  redis: { label: "RD", color: "bg-red-500/15 text-red-400" },
+  pinecone: { label: "PC", color: "bg-teal-500/15 text-teal-400" },
+  turbopuffer: { label: "TP", color: "bg-violet-500/15 text-violet-400" },
+};
+
 interface SidebarProps {
   selectedConnection: DatabaseConnection | null;
   onConnectionSelect: (connection: DatabaseConnection) => void;
   onTableSelect: (data: TableData) => void;
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
+  restoredConnectionId: string | null;
 }
 
 export function Sidebar({
@@ -22,17 +33,37 @@ export function Sidebar({
   onTableSelect,
   isLoading,
   setIsLoading,
+  restoredConnectionId,
 }: SidebarProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [hasRestored, setHasRestored] = useState(false);
 
   const { data: connections, refetch: refetchConnections } = useQuery({
     queryKey: ["connections"],
     queryFn: () => apiClient.getConnections(),
   });
 
+  // Auto-select restored connection once connections are loaded
+  useEffect(() => {
+    if (!hasRestored && restoredConnectionId && connections?.length) {
+      const match = connections.find((c) => c.id === restoredConnectionId);
+      if (match) {
+        onConnectionSelect(match);
+      }
+      setHasRestored(true);
+    }
+  }, [connections, restoredConnectionId, hasRestored, onConnectionSelect]);
+
   const handleConnectionCreated = () => {
     refetchConnections();
     setIsDialogOpen(false);
+  };
+
+  const getSubline = (conn: DatabaseConnection) => {
+    if (conn.type === "sqlite") return conn.host;
+    if (conn.type === "pinecone" || conn.type === "turbopuffer") return conn.host;
+    if (conn.type === "redis") return `${conn.host}:${conn.port}`;
+    return `${conn.host}:${conn.port}/${conn.database}`;
   };
 
   return (
@@ -52,7 +83,7 @@ export function Sidebar({
 
       <div className="flex-1 overflow-auto p-1.5">
         {connections?.map((connection) => {
-          const isMongo = connection.type === "mongodb";
+          const db = DB_LABELS[connection.type] || DB_LABELS.postgres;
           return (
             <div
               key={connection.id}
@@ -67,22 +98,16 @@ export function Sidebar({
               onClick={() => onConnectionSelect(connection)}
             >
               <div className="flex items-center gap-2">
-                <Database className={`h-3.5 w-3.5 flex-shrink-0 ${isMongo ? "text-green-500" : "text-emerald-500"}`} />
+                <Database className="h-3.5 w-3.5 flex-shrink-0 text-emerald-500" />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
                     <span className="text-sm font-medium truncate">{connection.name}</span>
-                    <span
-                      className={`text-[10px] font-medium px-1 py-0 rounded ${
-                        isMongo
-                          ? "bg-green-500/15 text-green-500"
-                          : "bg-blue-500/15 text-emerald-500"
-                      }`}
-                    >
-                      {isMongo ? "MDB" : "PG"}
+                    <span className={`text-[10px] font-medium px-1 py-0 rounded ${db.color}`}>
+                      {db.label}
                     </span>
                   </div>
                   <div className="text-xs text-muted-foreground truncate">
-                    {connection.host}:{connection.port}
+                    {getSubline(connection)}
                   </div>
                 </div>
                 {isLoading && selectedConnection?.id === connection.id && (

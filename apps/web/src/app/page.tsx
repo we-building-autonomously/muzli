@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { QueryProvider } from "@/components/providers/QueryProvider";
 import { Sidebar } from "@/components/sidebar/Sidebar";
@@ -8,17 +8,31 @@ import { Editor } from "@/components/editor/Editor";
 import { Results } from "@/components/results/Results";
 import type { DatabaseConnection, QueryResult, TableData } from "@/types";
 
+const STORAGE_KEY = "muzli:selectedConnectionId";
+
 function MuzliApp() {
   const [selectedConnection, setSelectedConnection] =
     useState<DatabaseConnection | null>(null);
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
   const [tableData, setTableData] = useState<TableData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [restoredConnectionId, setRestoredConnectionId] = useState<string | null>(null);
+
+  // Restore persisted connection ID on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) setRestoredConnectionId(stored);
+    } catch {}
+  }, []);
 
   const handleConnectionSelect = (connection: DatabaseConnection) => {
     setSelectedConnection(connection);
     setQueryResult(null);
     setTableData(null);
+    try {
+      localStorage.setItem(STORAGE_KEY, connection.id);
+    } catch {}
   };
 
   const handleQueryExecute = (result: QueryResult) => {
@@ -48,6 +62,7 @@ function MuzliApp() {
               onTableSelect={handleTableSelect}
               isLoading={isLoading}
               setIsLoading={setIsLoading}
+              restoredConnectionId={restoredConnectionId}
             />
           </Panel>
 
