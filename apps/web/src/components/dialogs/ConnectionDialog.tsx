@@ -51,9 +51,13 @@ export function ConnectionDialog({
     { value: "mysql" as const, label: "MySQL", port: 3306 },
     { value: "sqlite" as const, label: "SQLite", port: 0 },
     { value: "redis" as const, label: "Redis", port: 6379 },
+    { value: "pinecone" as const, label: "Pinecone", port: 443 },
+    { value: "turbopuffer" as const, label: "Turbopuffer", port: 443 },
   ];
 
-  const handleTypeChange = (type: "postgres" | "mongodb" | "mysql" | "sqlite" | "redis") => {
+  const isVectorDb = formData.type === "pinecone" || formData.type === "turbopuffer";
+
+  const handleTypeChange = (type: "postgres" | "mongodb" | "mysql" | "sqlite" | "redis" | "pinecone" | "turbopuffer") => {
     const dbType = dbTypes.find((t) => t.value === type);
     setFormData((prev) => ({
       ...prev,
@@ -107,7 +111,7 @@ export function ConnectionDialog({
   };
 
   const isFormValid =
-    formData.name && formData.host && (formData.type === "redis" || formData.database) && (formData.type === "sqlite" || formData.type === "redis" || formData.username);
+    formData.name && formData.host && (formData.type === "redis" || isVectorDb || formData.database) && (formData.type === "sqlite" || formData.type === "redis" || isVectorDb || formData.username);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -164,7 +168,7 @@ export function ConnectionDialog({
                 onChange={(e) =>
                   setFormData((prev) => ({ ...prev, host: e.target.value }))
                 }
-                placeholder={formData.type === "sqlite" ? "/path/to/database.db" : "localhost"}
+                placeholder={formData.type === "sqlite" ? "/path/to/database.db" : formData.type === "pinecone" ? "index-name-abc1234.svc.pinecone.io" : formData.type === "turbopuffer" ? "api.turbopuffer.com" : "localhost"}
               />
             </div>
             {formData.type !== "sqlite" && (
@@ -188,8 +192,9 @@ export function ConnectionDialog({
             )}
           </div>
 
+          {!isVectorDb && (
           <div className="grid gap-1.5">
-            <Label htmlFor="database" className="text-xs">{formData.type === "redis" ? "Database (0-15)" : "Database"}</Label>
+            <Label htmlFor="database" className="text-xs">{formData.type === "redis" ? "Database (0-15)" : formData.type === "turbopuffer" ? "Namespace" : "Database"}</Label>
             <Input
               id="database"
               className="h-8 text-sm"
@@ -197,11 +202,27 @@ export function ConnectionDialog({
               onChange={(e) =>
                 setFormData((prev) => ({ ...prev, database: e.target.value }))
               }
-              placeholder={formData.type === "mongodb" ? "mydb" : formData.type === "redis" ? "0" : formData.type === "sqlite" ? "main" : "myapp"}
+              placeholder={formData.type === "mongodb" ? "mydb" : formData.type === "redis" ? "0" : formData.type === "turbopuffer" ? "my-namespace" : formData.type === "sqlite" ? "main" : "myapp"}
             />
           </div>
+          )}
 
-          {formData.type !== "sqlite" && (
+          {formData.type === "turbopuffer" && (
+          <div className="grid gap-1.5">
+            <Label htmlFor="database" className="text-xs">Namespace</Label>
+            <Input
+              id="database"
+              className="h-8 text-sm"
+              value={formData.database}
+              onChange={(e) =>
+                setFormData((prev) => ({ ...prev, database: e.target.value }))
+              }
+              placeholder="my-namespace"
+            />
+          </div>
+          )}
+
+          {formData.type !== "sqlite" && !isVectorDb && (
           <div className="grid grid-cols-2 gap-2">
             {formData.type !== "redis" && (
             <div>
@@ -230,6 +251,22 @@ export function ConnectionDialog({
                 placeholder="password"
               />
             </div>
+          </div>
+          )}
+
+          {isVectorDb && (
+          <div className="grid gap-1.5">
+            <Label htmlFor="password" className="text-xs">API Key</Label>
+            <Input
+              id="password"
+              className="h-8 text-sm"
+              type="password"
+              value={formData.password}
+              onChange={(e) =>
+                setFormData((prev) => ({ ...prev, password: e.target.value }))
+              }
+              placeholder={formData.type === "pinecone" ? "pc-..." : "tbpf-..."}
+            />
           </div>
           )}
 

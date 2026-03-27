@@ -1,17 +1,42 @@
 "use client";
 
-import { BarChart3, Table, Loader2, AlertCircle } from "lucide-react";
-import type { QueryResult, TableData } from "@/types";
+import { useState, useMemo, lazy, Suspense } from "react";
+import { BarChart3, Table, Loader2, AlertCircle, Box } from "lucide-react";
+import type { QueryResult, TableData, VectorData } from "@/types";
 import { formatDuration } from "@/lib/utils";
+
+const VectorVisualization = lazy(() =>
+  import("@/components/VectorVisualization").then((m) => ({
+    default: m.VectorVisualization,
+  }))
+);
 
 interface ResultsProps {
   queryResult: QueryResult | null;
   tableData: TableData | null;
   isLoading: boolean;
+  connectionType?: string;
 }
 
-export function Results({ queryResult, tableData, isLoading }: ResultsProps) {
+export function Results({ queryResult, tableData, isLoading, connectionType }: ResultsProps) {
+  const [view, setView] = useState<"table" | "3d">("table");
   const data = queryResult || tableData;
+
+  const isVectorDb = connectionType === "pinecone" || connectionType === "turbopuffer";
+
+  const vectorData = useMemo((): VectorData[] => {
+    if (!data || !isVectorDb) return [];
+    return (data.rows || [])
+      .filter((row) => {
+        const values = row.values || row.vector;
+        return Array.isArray(values) && values.length > 0;
+      })
+      .map((row, i) => ({
+        id: String(row.id || `vector-${i}`),
+        values: (row.values || row.vector) as number[],
+        metadata: (row.metadata || row.attributes) as Record<string, unknown> | undefined,
+      }));
+  }, [data, isVectorDb]);
 
   if (isLoading) {
     return (
@@ -63,6 +88,17 @@ export function Results({ queryResult, tableData, isLoading }: ResultsProps) {
         </div>
 
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          {isVectorDb && vectorData.length > 0 && (
+            <button
+              onClick={() => setView(view === "table" ? "3d" : "table")}
+              className={`flex items-center gap-1 px-2 py-0.5 rounded border transition-colors ${
+                view === "3d" ? "bg-primary text-primary-foreground border-primary" : "hover:bg-muted"
+              }`}
+            >
+              <Box className="h-3 w-3" />
+              3D View
+            </button>
+          )}
           {isQueryResult && queryResult?.executionTime && (
             <span>{formatDuration(queryResult.executionTime)}</span>
           )}
@@ -81,7 +117,17 @@ export function Results({ queryResult, tableData, isLoading }: ResultsProps) {
       </div>
 
       <div className="flex-1 overflow-auto">
-        {rows.length === 0 ? (
+        {view === "3d" && vectorData.length > 0 ? (
+          <Suspense
+            fallback={
+              <div className="h-full flex items-center justify-center">
+                <Loader2 className="h-6 w-6 animate-spin" />
+              </div>
+            }
+          >
+            <VectorVisualization vectors={vectorData} />
+          </Suspense>
+        ) : rows.length === 0 ? (
           <div className="p-6 text-center text-muted-foreground">
             <AlertCircle className="h-6 w-6 mx-auto mb-1.5" />
             <p className="text-sm">Query executed successfully</p>

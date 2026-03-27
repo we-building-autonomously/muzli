@@ -1,7 +1,7 @@
 export interface DatabaseConnection {
   id: string;
   name: string;
-  type: "postgres" | "mongodb" | "mysql" | "sqlite" | "redis";
+  type: "postgres" | "mongodb" | "mysql" | "sqlite" | "redis" | "pinecone" | "turbopuffer";
   host: string;
   port: number;
   database: string;
@@ -14,7 +14,7 @@ export interface DatabaseConnection {
 
 export interface CreateConnectionData {
   name: string;
-  type: "postgres" | "mongodb" | "mysql" | "sqlite" | "redis";
+  type: "postgres" | "mongodb" | "mysql" | "sqlite" | "redis" | "pinecone" | "turbopuffer";
   host: string;
   port: number;
   database: string;
@@ -23,8 +23,14 @@ export interface CreateConnectionData {
   ssl: boolean;
 }
 
+export interface VectorData {
+  id: string;
+  values: number[];
+  metadata?: Record<string, unknown>;
+}
+
 export interface TestConnectionData {
-  type: "postgres" | "mongodb" | "mysql" | "sqlite" | "redis";
+  type: "postgres" | "mongodb" | "mysql" | "sqlite" | "redis" | "pinecone" | "turbopuffer";
   host: string;
   port: number;
   database: string;

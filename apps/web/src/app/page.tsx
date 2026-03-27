@@ -71,6 +71,7 @@ function MuzliApp() {
                   queryResult={queryResult}
                   tableData={tableData}
                   isLoading={isLoading}
+                  connectionType={selectedConnection?.type}
                 />
               </Panel>
             </PanelGroup>

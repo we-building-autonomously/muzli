@@ -13,20 +13,24 @@ import (
 )
 
 type QueryService struct {
-	connections    map[string]*pgxpool.Pool
-	mongoService   *MongoService
-	mysqlService   *MySQLService
-	sqliteService  *SQLiteService
-	redisService   *RedisService
+	connections        map[string]*pgxpool.Pool
+	mongoService       *MongoService
+	mysqlService       *MySQLService
+	sqliteService      *SQLiteService
+	redisService       *RedisService
+	pineconeService    *PineconeService
+	turbopufferService *TurbopufferService
 }
 
 func NewQueryService() *QueryService {
 	return &QueryService{
-		connections:    make(map[string]*pgxpool.Pool),
-		mongoService:   NewMongoService(),
-		mysqlService:   NewMySQLService(),
-		sqliteService:  NewSQLiteService(),
-		redisService:   NewRedisService(),
+		connections:        make(map[string]*pgxpool.Pool),
+		mongoService:       NewMongoService(),
+		mysqlService:       NewMySQLService(),
+		sqliteService:      NewSQLiteService(),
+		redisService:       NewRedisService(),
+		pineconeService:    NewPineconeService(),
+		turbopufferService: NewTurbopufferService(),
 	}
 }
 
@@ -74,6 +78,10 @@ func (s *QueryService) TestConnection(req models.TestConnectionRequest) (*models
 		return s.sqliteService.TestConnection(req)
 	case "redis":
 		return s.redisService.TestConnection(req)
+	case "pinecone":
+		return s.pineconeService.TestConnection(req)
+	case "turbopuffer":
+		return s.turbopufferService.TestConnection(req)
 	}
 
 	conn := &models.Connection{
@@ -127,6 +135,10 @@ func (s *QueryService) ExecuteQuery(connectionID string, query string, connectio
 		return s.sqliteService.ExecuteQuery(connectionID, query, connectionService)
 	case "redis":
 		return s.redisService.ExecuteQuery(connectionID, query, connectionService)
+	case "pinecone":
+		return s.pineconeService.ExecuteQuery(connectionID, query, connectionService)
+	case "turbopuffer":
+		return s.turbopufferService.ExecuteQuery(connectionID, query, connectionService)
 	}
 
 	pool, err := s.getConnection(conn)
@@ -230,6 +242,10 @@ func (s *QueryService) GetDatabases(connectionID string, connectionService *Conn
 		return s.sqliteService.GetDatabases(connectionID, connectionService)
 	case "redis":
 		return s.redisService.GetDatabases(connectionID, connectionService)
+	case "pinecone":
+		return s.pineconeService.GetDatabases(connectionID, connectionService)
+	case "turbopuffer":
+		return s.turbopufferService.GetDatabases(connectionID, connectionService)
 	}
 
 	pool, err := s.getConnection(conn)
@@ -283,6 +299,10 @@ func (s *QueryService) GetSchemas(connectionID string, connectionService *Connec
 		return s.sqliteService.GetSchemas(connectionID, connectionService)
 	case "redis":
 		return s.redisService.GetSchemas(connectionID, connectionService)
+	case "pinecone":
+		return s.pineconeService.GetSchemas(connectionID, connectionService)
+	case "turbopuffer":
+		return s.turbopufferService.GetSchemas(connectionID, connectionService)
 	}
 
 	pool, err := s.getConnection(conn)
@@ -334,6 +354,10 @@ func (s *QueryService) GetTables(connectionID, schema string, connectionService 
 		return s.sqliteService.GetTables(connectionID, schema, connectionService)
 	case "redis":
 		return s.redisService.GetTables(connectionID, schema, connectionService)
+	case "pinecone":
+		return s.pineconeService.GetTables(connectionID, schema, connectionService)
+	case "turbopuffer":
+		return s.turbopufferService.GetTables(connectionID, schema, connectionService)
 	}
 
 	pool, err := s.getConnection(conn)
@@ -398,6 +422,10 @@ func (s *QueryService) GetColumns(connectionID, schema, table string, connection
 		return s.sqliteService.GetColumns(connectionID, schema, table, connectionService)
 	case "redis":
 		return s.redisService.GetColumns(connectionID, schema, table, connectionService)
+	case "pinecone":
+		return s.pineconeService.GetColumns(connectionID, schema, table, connectionService)
+	case "turbopuffer":
+		return s.turbopufferService.GetColumns(connectionID, schema, table, connectionService)
 	}
 
 	pool, err := s.getConnection(conn)
@@ -473,6 +501,10 @@ func (s *QueryService) GetTableData(req models.TableDataRequest, connectionServi
 		return s.sqliteService.GetTableData(req, connectionService)
 	case "redis":
 		return s.redisService.GetTableData(req, connectionService)
+	case "pinecone":
+		return s.pineconeService.GetTableData(req, connectionService)
+	case "turbopuffer":
+		return s.turbopufferService.GetTableData(req, connectionService)
 	}
 
 	pool, err := s.getConnection(conn)
@@ -563,4 +595,6 @@ func (s *QueryService) Close() {
 	s.mysqlService.Close()
 	s.sqliteService.Close()
 	s.redisService.Close()
+	s.pineconeService.Close()
+	s.turbopufferService.Close()
 }
