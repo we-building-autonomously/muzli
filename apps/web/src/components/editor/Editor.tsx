@@ -42,7 +42,7 @@ function buildPineconeDefault(ctx?: VectorSearchContext | null) {
 }
 
 function buildTurbopufferDefault(ctx?: VectorSearchContext | null) {
-  const ns = ctx?.index || "my-namespace";
+  const ns = ctx?.namespace || ctx?.index || "my-namespace";
   return `{
   "operation": "query",
   "namespace": "${ns}",

@@ -8,17 +8,17 @@ import { apiClient } from "@/api/client";
 import { getConnections, deleteConnection as removeConnection } from "@/lib/connections";
 import type { DatabaseConnection, TableData, VectorSearchContext } from "@/types";
 
-const DB_LABELS: Record<string, { label: string; color: string }> = {
-  postgres: { label: "PG", color: "bg-emerald-500/15 text-emerald-400" },
-  mongodb: { label: "MDB", color: "bg-green-500/15 text-green-400" },
-  mysql: { label: "MY", color: "bg-sky-500/15 text-sky-400" },
-  sqlite: { label: "SQ", color: "bg-amber-500/15 text-amber-400" },
-  redis: { label: "RD", color: "bg-red-500/15 text-red-400" },
-  pinecone: { label: "PC", color: "bg-teal-500/15 text-teal-400" },
-  turbopuffer: { label: "TP", color: "bg-violet-500/15 text-violet-400" },
+const DB_ICONS: Record<string, string> = {
+  postgres: "🐘",
+  mongodb: "🍃",
+  mysql: "🐬",
+  sqlite: "📄",
+  redis: "⚡",
+  pinecone: "🌲",
+  turbopuffer: "🔮",
 };
 
-interface PineconeIndexInfo {
+interface IndexInfo {
   name: string;
   host: string;
   metric: string;
@@ -50,8 +50,8 @@ export function Sidebar({
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [hasRestored, setHasRestored] = useState(false);
   const [expandedConnections, setExpandedConnections] = useState<Set<string>>(new Set());
-  const [pineconeIndexes, setPineconeIndexes] = useState<Record<string, PineconeIndexInfo[]>>({});
-  const [loadingIndexes, setLoadingIndexes] = useState<Set<string>>(new Set());
+  const [vectorTree, setVectorTree] = useState<Record<string, IndexInfo[]>>({});
+  const [loadingTree, setLoadingTree] = useState<Set<string>>(new Set());
   const [selectedVectorCtx, setSelectedVectorCtx] = useState<string | null>(null);
   const [connections, setConnections] = useState<DatabaseConnection[]>([]);
 
@@ -66,9 +66,7 @@ export function Sidebar({
   useEffect(() => {
     if (!hasRestored && restoredConnectionId && connections.length) {
       const match = connections.find((c) => c.id === restoredConnectionId);
-      if (match) {
-        onConnectionSelect(match);
-      }
+      if (match) onConnectionSelect(match);
       setHasRestored(true);
     }
   }, [connections, restoredConnectionId, hasRestored, onConnectionSelect]);
@@ -81,75 +79,88 @@ export function Sidebar({
   const handleDeleteConnection = (connectionId: string) => {
     removeConnection(connectionId);
     refreshConnections();
-    if (selectedConnection?.id === connectionId) {
-      onConnectionSelect(null);
-    }
+    if (selectedConnection?.id === connectionId) onConnectionSelect(null);
   };
 
   const isVectorDb = (type: string) => type === "pinecone" || type === "turbopuffer";
 
   const getSubline = (conn: DatabaseConnection) => {
     if (conn.type === "sqlite") return conn.host;
-    if (isVectorDb(conn.type)) return conn.host || "auto-discover";
+    if (isVectorDb(conn.type)) return null;
     if (conn.type === "redis") return `${conn.host}:${conn.port}`;
     return `${conn.host}:${conn.port}/${conn.database}`;
   };
 
-  const loadPineconeIndexes = useCallback(async (conn: DatabaseConnection) => {
-    if (loadingIndexes.has(conn.id)) return;
-    setLoadingIndexes((prev) => new Set(prev).add(conn.id));
+  const loadTree = useCallback(async (conn: DatabaseConnection) => {
+    if (loadingTree.has(conn.id)) return;
+    setLoadingTree((prev) => new Set(prev).add(conn.id));
     try {
       const databases = await apiClient.getDatabases(conn);
-      const indexes: PineconeIndexInfo[] = databases.map((db) => ({
-        name: db.name,
-        host: db.collation || "",
-        metric: db.encoding || "",
-        dimension: parseInt(db.ctypes || "0") || 0,
-        namespaces: [],
-        expanded: false,
-        loading: false,
-      }));
-      setPineconeIndexes((prev) => ({ ...prev, [conn.id]: indexes }));
+
+      if (conn.type === "turbopuffer") {
+        // Turbopuffer: databases ARE namespaces (flat list, no sub-items)
+        const items: IndexInfo[] = databases.map((db) => ({
+          name: db.name,
+          host: "",
+          metric: "",
+          dimension: 0,
+          namespaces: [],
+          expanded: false,
+          loading: false,
+        }));
+        setVectorTree((prev) => ({ ...prev, [conn.id]: items }));
+      } else {
+        // Pinecone: databases are indexes, each has namespaces
+        const items: IndexInfo[] = databases.map((db) => ({
+          name: db.name,
+          host: db.collation || "",
+          metric: db.encoding || "",
+          dimension: parseInt(db.ctypes || "0") || 0,
+          namespaces: [],
+          expanded: false,
+          loading: false,
+        }));
+        setVectorTree((prev) => ({ ...prev, [conn.id]: items }));
+      }
     } catch (err) {
-      console.error("Failed to load indexes:", err);
+      console.error("Failed to load tree:", err);
     } finally {
-      setLoadingIndexes((prev) => {
+      setLoadingTree((prev) => {
         const next = new Set(prev);
         next.delete(conn.id);
         return next;
       });
     }
-  }, [loadingIndexes]);
+  }, [loadingTree]);
 
-  const loadNamespaces = useCallback(async (conn: DatabaseConnection, indexName: string, indexHost: string) => {
-    setPineconeIndexes((prev) => {
-      const indexes = prev[conn.id]?.map((idx) =>
+  const loadNamespaces = useCallback(async (conn: DatabaseConnection, indexName: string) => {
+    setVectorTree((prev) => {
+      const items = prev[conn.id]?.map((idx) =>
         idx.name === indexName ? { ...idx, loading: true } : idx
       );
-      return { ...prev, [conn.id]: indexes || [] };
+      return { ...prev, [conn.id]: items || [] };
     });
 
     try {
       const schemas = await apiClient.getSchemas(conn);
       const namespaces = schemas.map((s) => s.name || "(default)");
 
-      setPineconeIndexes((prev) => {
-        const indexes = prev[conn.id]?.map((idx) =>
+      setVectorTree((prev) => {
+        const items = prev[conn.id]?.map((idx) =>
           idx.name === indexName
             ? { ...idx, namespaces, expanded: true, loading: false }
             : idx
         );
-        return { ...prev, [conn.id]: indexes || [] };
+        return { ...prev, [conn.id]: items || [] };
       });
-    } catch (err) {
-      console.error("Failed to load namespaces:", err);
-      setPineconeIndexes((prev) => {
-        const indexes = prev[conn.id]?.map((idx) =>
+    } catch {
+      setVectorTree((prev) => {
+        const items = prev[conn.id]?.map((idx) =>
           idx.name === indexName
             ? { ...idx, namespaces: ["(default)"], expanded: true, loading: false }
             : idx
         );
-        return { ...prev, [conn.id]: indexes || [] };
+        return { ...prev, [conn.id]: items || [] };
       });
     }
   }, []);
@@ -161,28 +172,28 @@ export function Sidebar({
         next.delete(conn.id);
       } else {
         next.add(conn.id);
-        if (isVectorDb(conn.type) && !pineconeIndexes[conn.id]) {
-          loadPineconeIndexes(conn);
+        if (isVectorDb(conn.type) && !vectorTree[conn.id]) {
+          loadTree(conn);
         }
       }
       return next;
     });
   };
 
-  const toggleIndex = (conn: DatabaseConnection, indexName: string, indexHost: string) => {
-    const indexes = pineconeIndexes[conn.id];
-    const idx = indexes?.find((i) => i.name === indexName);
+  const toggleIndex = (conn: DatabaseConnection, indexName: string) => {
+    const items = vectorTree[conn.id];
+    const idx = items?.find((i) => i.name === indexName);
     if (idx?.expanded) {
-      setPineconeIndexes((prev) => {
+      setVectorTree((prev) => {
         const updated = prev[conn.id]?.map((i) =>
           i.name === indexName ? { ...i, expanded: false } : i
         );
         return { ...prev, [conn.id]: updated || [] };
       });
     } else if (!idx?.namespaces.length) {
-      loadNamespaces(conn, indexName, indexHost);
+      loadNamespaces(conn, indexName);
     } else {
-      setPineconeIndexes((prev) => {
+      setVectorTree((prev) => {
         const updated = prev[conn.id]?.map((i) =>
           i.name === indexName ? { ...i, expanded: true } : i
         );
@@ -191,7 +202,8 @@ export function Sidebar({
     }
   };
 
-  const handleIndexClick = (connectionId: string, idx: PineconeIndexInfo) => {
+  // Pinecone: click an index
+  const handleIndexClick = (connectionId: string, idx: IndexInfo) => {
     const ctxKey = `${connectionId}:${idx.name}:`;
     setSelectedVectorCtx(ctxKey);
     onVectorContextSelect?.({
@@ -202,7 +214,8 @@ export function Sidebar({
     });
   };
 
-  const handleNamespaceClick = (connectionId: string, idx: PineconeIndexInfo, namespace: string) => {
+  // Pinecone: click a namespace under an index
+  const handleNamespaceClick = (connectionId: string, idx: IndexInfo, namespace: string) => {
     const ns = namespace === "(default)" ? "" : namespace;
     const ctxKey = `${connectionId}:${idx.name}:${ns}`;
     setSelectedVectorCtx(ctxKey);
@@ -211,6 +224,18 @@ export function Sidebar({
       host: idx.host,
       namespace: ns,
       dimension: idx.dimension,
+    });
+  };
+
+  // Turbopuffer: click a namespace (top-level item)
+  const handleTurbopufferNamespaceClick = (connectionId: string, namespaceName: string) => {
+    const ctxKey = `${connectionId}::${namespaceName}`;
+    setSelectedVectorCtx(ctxKey);
+    onVectorContextSelect?.({
+      index: namespaceName,
+      host: "",
+      namespace: namespaceName,
+      dimension: 0,
     });
   };
 
@@ -231,11 +256,13 @@ export function Sidebar({
 
       <div className="flex-1 overflow-auto p-1.5">
         {connections.map((connection) => {
-          const db = DB_LABELS[connection.type] || DB_LABELS.postgres;
+          const icon = DB_ICONS[connection.type] || "🗄️";
           const isExpanded = expandedConnections.has(connection.id);
           const isVector = isVectorDb(connection.type);
-          const indexes = pineconeIndexes[connection.id] || [];
-          const isLoadingIdx = loadingIndexes.has(connection.id);
+          const isPinecone = connection.type === "pinecone";
+          const treeItems = vectorTree[connection.id] || [];
+          const isLoadingItems = loadingTree.has(connection.id);
+          const subline = getSubline(connection);
 
           return (
             <div key={connection.id} className="mb-0.5">
@@ -251,15 +278,13 @@ export function Sidebar({
                 `}
                 onClick={() => {
                   onConnectionSelect(connection);
-                  if (isVector) {
-                    toggleConnection(connection);
-                  }
+                  if (isVector) toggleConnection(connection);
                 }}
               >
                 <div className="flex items-center gap-1.5">
                   {isVector ? (
-                    <span className="w-3.5 flex items-center justify-center flex-shrink-0">
-                      {isLoadingIdx ? (
+                    <span className="w-4 flex items-center justify-center flex-shrink-0">
+                      {isLoadingItems ? (
                         <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
                       ) : isExpanded ? (
                         <ChevronDown className="h-3 w-3 text-muted-foreground" />
@@ -267,20 +292,12 @@ export function Sidebar({
                         <ChevronRight className="h-3 w-3 text-muted-foreground" />
                       )}
                     </span>
-                  ) : (
-                    <Database className="h-3.5 w-3.5 flex-shrink-0 text-emerald-500" />
-                  )}
+                  ) : null}
+                  <span className="text-sm flex-shrink-0">{icon}</span>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-sm font-medium truncate">{connection.name}</span>
-                      <span className={`text-[10px] font-medium px-1 py-0 rounded ${db.color}`}>
-                        {db.label}
-                      </span>
-                    </div>
-                    {!isVector && (
-                      <div className="text-xs text-muted-foreground truncate">
-                        {getSubline(connection)}
-                      </div>
+                    <span className="text-sm font-medium truncate block">{connection.name}</span>
+                    {subline && (
+                      <span className="text-xs text-muted-foreground truncate block">{subline}</span>
                     )}
                   </div>
                   <button
@@ -288,7 +305,7 @@ export function Sidebar({
                       e.stopPropagation();
                       handleDeleteConnection(connection.id);
                     }}
-                    className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-opacity"
+                    className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-opacity flex-shrink-0"
                   >
                     <X className="h-3 w-3" />
                   </button>
@@ -298,77 +315,102 @@ export function Sidebar({
                 </div>
               </div>
 
-              {/* Pinecone index tree */}
+              {/* Vector DB tree */}
               {isVector && isExpanded && (
-                <div className="ml-3 pl-2 border-l border-border/50">
-                  {indexes.length === 0 && !isLoadingIdx && (
+                <div className="ml-4 pl-2 border-l border-border/50">
+                  {treeItems.length === 0 && !isLoadingItems && (
                     <div className="py-2 px-2 text-[10px] text-muted-foreground">
-                      No indexes found
+                      {isPinecone ? "No indexes found" : "No namespaces found"}
                     </div>
                   )}
-                  {indexes.map((idx) => (
-                    <div key={idx.name}>
-                      {/* Index row */}
-                      <div
-                        className={`
-                          flex items-center gap-1.5 py-1.5 px-2 rounded-md cursor-pointer text-xs transition-colors
-                          ${selectedVectorCtx?.startsWith(`${connection.id}:${idx.name}:`) && !selectedVectorCtx?.includes(":", `${connection.id}:${idx.name}:`.length)
-                            ? "bg-accent/50 text-accent-foreground"
-                            : "hover:bg-muted/50"
-                          }
-                        `}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleIndex(connection, idx.name, idx.host);
-                          handleIndexClick(connection.id, idx);
-                        }}
-                      >
-                        {idx.loading ? (
-                          <Loader2 className="h-3 w-3 animate-spin text-muted-foreground flex-shrink-0" />
-                        ) : idx.expanded ? (
-                          <ChevronDown className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                        ) : (
-                          <ChevronRight className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                        )}
-                        <Layers className="h-3 w-3 text-teal-400 flex-shrink-0" />
-                        <span className="font-medium truncate">{idx.name}</span>
-                        {idx.metric && (
-                          <span className="text-[10px] text-muted-foreground ml-auto flex-shrink-0">
-                            {idx.metric}
-                          </span>
-                        )}
-                      </div>
 
-                      {/* Namespaces */}
-                      {idx.expanded && (
-                        <div className="ml-3 pl-2 border-l border-border/30">
-                          {idx.namespaces.map((ns) => {
-                            const nsKey = ns === "(default)" ? "" : ns;
-                            const ctxKey = `${connection.id}:${idx.name}:${nsKey}`;
-                            return (
-                              <div
-                                key={ns}
-                                className={`
-                                  flex items-center gap-1.5 py-1 px-2 rounded-md cursor-pointer text-xs transition-colors
-                                  ${selectedVectorCtx === ctxKey
-                                    ? "bg-accent/50 text-accent-foreground"
-                                    : "hover:bg-muted/50 text-muted-foreground"
-                                  }
-                                `}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleNamespaceClick(connection.id, idx, ns);
-                                }}
-                              >
-                                <FolderOpen className="h-3 w-3 text-teal-300/60 flex-shrink-0" />
-                                <span className="truncate">{ns}</span>
-                              </div>
-                            );
-                          })}
+                  {isPinecone
+                    ? /* Pinecone: Index → Namespace tree */
+                      treeItems.map((idx) => (
+                        <div key={idx.name}>
+                          <div
+                            className={`
+                              flex items-center gap-1.5 py-1.5 px-2 rounded-md cursor-pointer text-xs transition-colors
+                              ${selectedVectorCtx === `${connection.id}:${idx.name}:`
+                                ? "bg-accent/50 text-accent-foreground"
+                                : "hover:bg-muted/50"
+                              }
+                            `}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleIndex(connection, idx.name);
+                              handleIndexClick(connection.id, idx);
+                            }}
+                          >
+                            {idx.loading ? (
+                              <Loader2 className="h-3 w-3 animate-spin text-muted-foreground flex-shrink-0" />
+                            ) : idx.expanded ? (
+                              <ChevronDown className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                            ) : (
+                              <ChevronRight className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                            )}
+                            <Layers className="h-3 w-3 text-teal-400 flex-shrink-0" />
+                            <span className="font-medium truncate">{idx.name}</span>
+                            {idx.metric && (
+                              <span className="text-[10px] text-muted-foreground ml-auto flex-shrink-0">
+                                {idx.metric}
+                              </span>
+                            )}
+                          </div>
+
+                          {idx.expanded && (
+                            <div className="ml-3 pl-2 border-l border-border/30">
+                              {idx.namespaces.map((ns) => {
+                                const nsKey = ns === "(default)" ? "" : ns;
+                                const ctxKey = `${connection.id}:${idx.name}:${nsKey}`;
+                                return (
+                                  <div
+                                    key={ns}
+                                    className={`
+                                      flex items-center gap-1.5 py-1 px-2 rounded-md cursor-pointer text-xs transition-colors
+                                      ${selectedVectorCtx === ctxKey
+                                        ? "bg-accent/50 text-accent-foreground"
+                                        : "hover:bg-muted/50 text-muted-foreground"
+                                      }
+                                    `}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleNamespaceClick(connection.id, idx, ns);
+                                    }}
+                                  >
+                                    <FolderOpen className="h-3 w-3 text-teal-300/60 flex-shrink-0" />
+                                    <span className="truncate">{ns}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  ))}
+                      ))
+                    : /* Turbopuffer: flat namespace list */
+                      treeItems.map((item) => {
+                        const ctxKey = `${connection.id}::${item.name}`;
+                        return (
+                          <div
+                            key={item.name}
+                            className={`
+                              flex items-center gap-1.5 py-1.5 px-2 rounded-md cursor-pointer text-xs transition-colors
+                              ${selectedVectorCtx === ctxKey
+                                ? "bg-accent/50 text-accent-foreground"
+                                : "hover:bg-muted/50 text-muted-foreground"
+                              }
+                            `}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleTurbopufferNamespaceClick(connection.id, item.name);
+                            }}
+                          >
+                            <FolderOpen className="h-3 w-3 text-violet-400/60 flex-shrink-0" />
+                            <span className="font-medium truncate">{item.name}</span>
+                          </div>
+                        );
+                      })
+                  }
                 </div>
               )}
             </div>
