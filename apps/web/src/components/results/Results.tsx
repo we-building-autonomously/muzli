@@ -1,16 +1,18 @@
-import { BarChart3, Table, Loader2, AlertCircle } from 'lucide-react'
-import type { QueryResult, TableData } from '@/types'
-import { formatDuration } from '@/lib/utils'
+"use client";
+
+import { BarChart3, Table, Loader2, AlertCircle } from "lucide-react";
+import type { QueryResult, TableData } from "@/types";
+import { formatDuration } from "@/lib/utils";
 
 interface ResultsProps {
-  queryResult: QueryResult | null
-  tableData: TableData | null
-  isLoading: boolean
+  queryResult: QueryResult | null;
+  tableData: TableData | null;
+  isLoading: boolean;
 }
 
 export function Results({ queryResult, tableData, isLoading }: ResultsProps) {
-  const data = queryResult || tableData
-  
+  const data = queryResult || tableData;
+
   if (isLoading) {
     return (
       <div className="h-full flex flex-col">
@@ -25,7 +27,7 @@ export function Results({ queryResult, tableData, isLoading }: ResultsProps) {
           </div>
         </div>
       </div>
-    )
+    );
   }
 
   if (!data) {
@@ -43,48 +45,55 @@ export function Results({ queryResult, tableData, isLoading }: ResultsProps) {
           </div>
         </div>
       </div>
-    )
+    );
   }
 
-  const isQueryResult = 'executionTime' in data
-  const rows = data.rows || []
-  const columns = isQueryResult ? data.columns : data.columns.map(col => ({ name: col.name, type: col.dataType }))
+  const isQueryResult = "executionTime" in data;
+  const rows = data.rows || [];
+  const columns = isQueryResult
+    ? data.columns
+    : data.columns.map((col) => ({ name: col.name, type: col.dataType }));
 
   return (
     <div className="h-full flex flex-col">
-      {/* Header */}
       <div className="flex items-center justify-between p-4 border-b">
         <div className="flex items-center gap-2">
           <BarChart3 className="h-4 w-4" />
           <span>Results</span>
         </div>
-        
+
         <div className="flex items-center gap-4 text-sm text-muted-foreground">
           {isQueryResult && queryResult?.executionTime && (
-            <span>⏱️ {formatDuration(queryResult.executionTime)}</span>
+            <span>Time: {formatDuration(queryResult.executionTime)}</span>
           )}
-          <span>📊 {rows.length} row{rows.length !== 1 ? 's' : ''}</span>
+          <span>
+            Rows: {rows.length} row{rows.length !== 1 ? "s" : ""}
+          </span>
           {queryResult?.affectedRows !== undefined && (
-            <span>✏️ {queryResult.affectedRows} affected</span>
+            <span>Affected: {queryResult.affectedRows}</span>
           )}
           {tableData && (
-            <span>📄 Page {tableData.page} of {Math.ceil(tableData.totalRows / tableData.pageSize)}</span>
+            <span>
+              Page {tableData.page} of{" "}
+              {Math.ceil(tableData.totalRows / tableData.pageSize)}
+            </span>
           )}
         </div>
       </div>
 
-      {/* Results */}
       <div className="flex-1 overflow-auto">
         {rows.length === 0 ? (
           <div className="p-8 text-center text-muted-foreground">
             <AlertCircle className="h-8 w-8 mx-auto mb-2" />
             <p>Query executed successfully</p>
             <p className="text-sm mt-1">No rows returned</p>
-            {queryResult?.affectedRows !== undefined && queryResult.affectedRows > 0 && (
-              <p className="text-sm mt-1 text-green-400">
-                {queryResult.affectedRows} row{queryResult.affectedRows !== 1 ? 's' : ''} affected
-              </p>
-            )}
+            {queryResult?.affectedRows !== undefined &&
+              queryResult.affectedRows > 0 && (
+                <p className="text-sm mt-1 text-green-400">
+                  {queryResult.affectedRows} row
+                  {queryResult.affectedRows !== 1 ? "s" : ""} affected
+                </p>
+              )}
           </div>
         ) : (
           <div className="min-w-full">
@@ -92,7 +101,10 @@ export function Results({ queryResult, tableData, isLoading }: ResultsProps) {
               <thead className="bg-muted">
                 <tr>
                   {columns.map((column, index) => (
-                    <th key={index} className="px-4 py-2 text-left font-medium">
+                    <th
+                      key={index}
+                      className="px-4 py-2 text-left font-medium"
+                    >
                       <div className="flex items-center gap-2">
                         <span>{column.name}</span>
                         <span className="text-xs text-muted-foreground">
@@ -107,28 +119,34 @@ export function Results({ queryResult, tableData, isLoading }: ResultsProps) {
                 {rows.map((row, rowIndex) => (
                   <tr key={rowIndex} className="border-t hover:bg-muted/50">
                     {columns.map((column, colIndex) => {
-                      const value = row[column.name]
+                      const value = row[column.name];
                       return (
                         <td key={colIndex} className="px-4 py-2">
                           <div className="max-w-xs truncate">
                             {value === null || value === undefined ? (
-                              <span className="text-muted-foreground italic">NULL</span>
-                            ) : typeof value === 'object' ? (
+                              <span className="text-muted-foreground italic">
+                                NULL
+                              </span>
+                            ) : typeof value === "object" ? (
                               <span className="text-blue-400">
                                 {JSON.stringify(value)}
                               </span>
-                            ) : typeof value === 'boolean' ? (
-                              <span className={value ? 'text-green-400' : 'text-red-400'}>
+                            ) : typeof value === "boolean" ? (
+                              <span
+                                className={
+                                  value ? "text-green-400" : "text-red-400"
+                                }
+                              >
                                 {value.toString()}
                               </span>
-                            ) : typeof value === 'number' ? (
+                            ) : typeof value === "number" ? (
                               <span className="text-orange-400">{value}</span>
                             ) : (
                               <span>{String(value)}</span>
                             )}
                           </div>
                         </td>
-                      )
+                      );
                     })}
                   </tr>
                 ))}
@@ -138,5 +156,5 @@ export function Results({ queryResult, tableData, isLoading }: ResultsProps) {
         )}
       </div>
     </div>
-  )
+  );
 }

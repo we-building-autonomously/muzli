@@ -52,7 +52,7 @@ export interface SchemaInfo {
 export interface TableInfo {
   name: string;
   schema: string;
-  type: 'table' | 'view' | 'materialized_view';
+  type: "table" | "view" | "materialized_view";
   owner: string;
   rowCount?: number;
 }
@@ -74,7 +74,7 @@ export interface QueryResult {
     name: string;
     type: string;
   }>;
-  rows: Array<Record<string, any>>;
+  rows: Array<Record<string, unknown>>;
   rowCount: number;
   executionTime: number;
   affectedRows?: number;
@@ -82,7 +82,7 @@ export interface QueryResult {
 
 export interface TableData {
   columns: ColumnInfo[];
-  rows: Array<Record<string, any>>;
+  rows: Array<Record<string, unknown>>;
   totalRows: number;
   page: number;
   pageSize: number;
@@ -90,11 +90,11 @@ export interface TableData {
 
 export interface SidebarItem {
   id: string;
-  type: 'connection' | 'database' | 'schema' | 'table' | 'column';
+  type: "connection" | "database" | "schema" | "table" | "column";
   name: string;
   parent?: string;
   expanded?: boolean;
   children?: SidebarItem[];
   icon?: React.ReactNode;
-  data?: any;
+  data?: unknown;
 }

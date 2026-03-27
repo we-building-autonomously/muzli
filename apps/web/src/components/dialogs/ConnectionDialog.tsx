@@ -1,6 +1,8 @@
-import { useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
-import { Loader2, CheckCircle, XCircle } from 'lucide-react'
+"use client";
+
+import { useState } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { Loader2, CheckCircle, XCircle } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -8,18 +10,18 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '../ui/dialog'
-import { Button } from '../ui/button'
-import { Input } from '../ui/input'
-import { Label } from '../ui/label'
-import { Switch } from '../ui/switch'
-import { apiClient } from '@/api/client'
-import type { CreateConnectionData } from '@/types'
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { apiClient } from "@/api/client";
+import type { CreateConnectionData } from "@/types";
 
 interface ConnectionDialogProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  onConnectionCreated: () => void
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConnectionCreated: () => void;
 }
 
 export function ConnectionDialog({
@@ -28,63 +30,64 @@ export function ConnectionDialog({
   onConnectionCreated,
 }: ConnectionDialogProps) {
   const [formData, setFormData] = useState<CreateConnectionData>({
-    name: '',
-    host: 'localhost',
+    name: "",
+    host: "localhost",
     port: 5432,
-    database: '',
-    username: '',
-    password: '',
+    database: "",
+    username: "",
+    password: "",
     ssl: false,
-  })
+  });
 
   const [testResult, setTestResult] = useState<{
-    status: 'success' | 'error' | null
-    message: string
-  }>({ status: null, message: '' })
+    status: "success" | "error" | null;
+    message: string;
+  }>({ status: null, message: "" });
 
   const testMutation = useMutation({
     mutationFn: () => apiClient.testConnection(formData),
     onSuccess: (result) => {
       setTestResult({
-        status: result.success ? 'success' : 'error',
+        status: result.success ? "success" : "error",
         message: result.message,
-      })
+      });
     },
     onError: (error: Error) => {
       setTestResult({
-        status: 'error',
+        status: "error",
         message: error.message,
-      })
+      });
     },
-  })
+  });
 
   const createMutation = useMutation({
     mutationFn: () => apiClient.createConnection(formData),
     onSuccess: () => {
-      onConnectionCreated()
+      onConnectionCreated();
       setFormData({
-        name: '',
-        host: 'localhost',
+        name: "",
+        host: "localhost",
         port: 5432,
-        database: '',
-        username: '',
-        password: '',
+        database: "",
+        username: "",
+        password: "",
         ssl: false,
-      })
-      setTestResult({ status: null, message: '' })
+      });
+      setTestResult({ status: null, message: "" });
     },
-  })
+  });
 
   const handleTest = () => {
-    setTestResult({ status: null, message: '' })
-    testMutation.mutate()
-  }
+    setTestResult({ status: null, message: "" });
+    testMutation.mutate();
+  };
 
   const handleCreate = () => {
-    createMutation.mutate()
-  }
+    createMutation.mutate();
+  };
 
-  const isFormValid = formData.name && formData.host && formData.database && formData.username
+  const isFormValid =
+    formData.name && formData.host && formData.database && formData.username;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -102,7 +105,9 @@ export function ConnectionDialog({
             <Input
               id="name"
               value={formData.name}
-              onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+              onChange={(e) =>
+                setFormData((prev) => ({ ...prev, name: e.target.value }))
+              }
               placeholder="My PostgreSQL DB"
             />
           </div>
@@ -113,7 +118,9 @@ export function ConnectionDialog({
               <Input
                 id="host"
                 value={formData.host}
-                onChange={(e) => setFormData(prev => ({ ...prev, host: e.target.value }))}
+                onChange={(e) =>
+                  setFormData((prev) => ({ ...prev, host: e.target.value }))
+                }
                 placeholder="localhost"
               />
             </div>
@@ -123,7 +130,12 @@ export function ConnectionDialog({
                 id="port"
                 type="number"
                 value={formData.port}
-                onChange={(e) => setFormData(prev => ({ ...prev, port: parseInt(e.target.value) || 5432 }))}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    port: parseInt(e.target.value) || 5432,
+                  }))
+                }
                 placeholder="5432"
               />
             </div>
@@ -134,7 +146,9 @@ export function ConnectionDialog({
             <Input
               id="database"
               value={formData.database}
-              onChange={(e) => setFormData(prev => ({ ...prev, database: e.target.value }))}
+              onChange={(e) =>
+                setFormData((prev) => ({ ...prev, database: e.target.value }))
+              }
               placeholder="myapp"
             />
           </div>
@@ -145,7 +159,9 @@ export function ConnectionDialog({
               <Input
                 id="username"
                 value={formData.username}
-                onChange={(e) => setFormData(prev => ({ ...prev, username: e.target.value }))}
+                onChange={(e) =>
+                  setFormData((prev) => ({ ...prev, username: e.target.value }))
+                }
                 placeholder="postgres"
               />
             </div>
@@ -155,7 +171,9 @@ export function ConnectionDialog({
                 id="password"
                 type="password"
                 value={formData.password}
-                onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
+                onChange={(e) =>
+                  setFormData((prev) => ({ ...prev, password: e.target.value }))
+                }
                 placeholder="password"
               />
             </div>
@@ -165,19 +183,22 @@ export function ConnectionDialog({
             <Switch
               id="ssl"
               checked={formData.ssl}
-              onCheckedChange={(checked) => setFormData(prev => ({ ...prev, ssl: checked }))}
+              onCheckedChange={(checked) =>
+                setFormData((prev) => ({ ...prev, ssl: checked }))
+              }
             />
             <Label htmlFor="ssl">Use SSL</Label>
           </div>
 
-          {/* Test Connection Result */}
           {testResult.status && (
-            <div className={`flex items-center gap-2 p-3 rounded-lg ${
-              testResult.status === 'success' 
-                ? 'bg-green-500/10 text-green-500 border border-green-500/20' 
-                : 'bg-red-500/10 text-red-500 border border-red-500/20'
-            }`}>
-              {testResult.status === 'success' ? (
+            <div
+              className={`flex items-center gap-2 p-3 rounded-lg ${
+                testResult.status === "success"
+                  ? "bg-green-500/10 text-green-500 border border-green-500/20"
+                  : "bg-red-500/10 text-red-500 border border-red-500/20"
+              }`}
+            >
+              {testResult.status === "success" ? (
                 <CheckCircle className="h-4 w-4" />
               ) : (
                 <XCircle className="h-4 w-4" />
@@ -201,10 +222,10 @@ export function ConnectionDialog({
                   Testing...
                 </>
               ) : (
-                'Test Connection'
+                "Test Connection"
               )}
             </Button>
-            
+
             <div className="flex gap-2">
               <Button
                 type="button"
@@ -216,7 +237,11 @@ export function ConnectionDialog({
               <Button
                 type="button"
                 onClick={handleCreate}
-                disabled={!isFormValid || createMutation.isPending || testResult.status !== 'success'}
+                disabled={
+                  !isFormValid ||
+                  createMutation.isPending ||
+                  testResult.status !== "success"
+                }
               >
                 {createMutation.isPending ? (
                   <>
@@ -224,7 +249,7 @@ export function ConnectionDialog({
                     Creating...
                   </>
                 ) : (
-                  'Create Connection'
+                  "Create Connection"
                 )}
               </Button>
             </div>
@@ -232,5 +257,5 @@ export function ConnectionDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  )
+  );
 }

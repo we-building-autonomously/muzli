@@ -1,41 +1,42 @@
-import { useState } from 'react'
-import { Plus, Database, Loader2 } from 'lucide-react'
-import { useQuery } from '@tanstack/react-query'
-import { Button } from '../ui/button'
-import { ConnectionDialog } from '../dialogs/ConnectionDialog'
-import { apiClient } from '@/api/client'
-import type { DatabaseConnection, TableData } from '@/types'
+"use client";
+
+import { useState } from "react";
+import { Plus, Database, Loader2 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { ConnectionDialog } from "@/components/dialogs/ConnectionDialog";
+import { apiClient } from "@/api/client";
+import type { DatabaseConnection, TableData } from "@/types";
 
 interface SidebarProps {
-  selectedConnection: DatabaseConnection | null
-  onConnectionSelect: (connection: DatabaseConnection) => void
-  onTableSelect: (data: TableData) => void
-  isLoading: boolean
-  setIsLoading: (loading: boolean) => void
+  selectedConnection: DatabaseConnection | null;
+  onConnectionSelect: (connection: DatabaseConnection) => void;
+  onTableSelect: (data: TableData) => void;
+  isLoading: boolean;
+  setIsLoading: (loading: boolean) => void;
 }
 
-export function Sidebar({ 
-  selectedConnection, 
-  onConnectionSelect, 
+export function Sidebar({
+  selectedConnection,
+  onConnectionSelect,
   onTableSelect,
   isLoading,
-  setIsLoading 
+  setIsLoading,
 }: SidebarProps) {
-  const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   const { data: connections, refetch: refetchConnections } = useQuery({
-    queryKey: ['connections'],
+    queryKey: ["connections"],
     queryFn: () => apiClient.getConnections(),
-  })
+  });
 
   const handleConnectionCreated = () => {
-    refetchConnections()
-    setIsDialogOpen(false)
-  }
+    refetchConnections();
+    setIsDialogOpen(false);
+  };
 
   return (
     <div className="h-full flex flex-col border-r">
-      {/* Header */}
       <div className="p-4 border-b">
         <div className="flex items-center justify-between">
           <h2 className="font-semibold">Connections</h2>
@@ -49,16 +50,16 @@ export function Sidebar({
         </div>
       </div>
 
-      {/* Connections List */}
       <div className="flex-1 overflow-auto p-2">
         {connections?.map((connection) => (
           <div
             key={connection.id}
             className={`
               p-3 rounded-lg cursor-pointer transition-colors mb-2
-              ${selectedConnection?.id === connection.id 
-                ? 'bg-accent text-accent-foreground' 
-                : 'hover:bg-muted'
+              ${
+                selectedConnection?.id === connection.id
+                  ? "bg-accent text-accent-foreground"
+                  : "hover:bg-muted"
               }
             `}
             onClick={() => onConnectionSelect(connection)}
@@ -93,5 +94,5 @@ export function Sidebar({
         onConnectionCreated={handleConnectionCreated}
       />
     </div>
-  )
+  );
 }

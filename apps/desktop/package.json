@@ -7,7 +7,7 @@
   "homepage": "./",
   "scripts": {
     "build": "tsc && npm run build:renderer",
-    "build:renderer": "cd ../web && npm run build && cp -r dist/* ../desktop/dist/renderer/",
+    "build:renderer": "cd ../web && npm run build && mkdir -p ../desktop/dist/renderer && cp -r out/* ../desktop/dist/renderer/",
     "dev": "concurrently \"npm run dev:main\" \"npm run dev:renderer\"",
     "dev:main": "tsc --watch --project tsconfig.main.json",
     "dev:renderer": "cd ../web && npm run dev",
