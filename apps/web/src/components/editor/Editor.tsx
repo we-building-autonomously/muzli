@@ -2,11 +2,11 @@
 
 import { useState, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Play, Loader2, Database } from "lucide-react";
+import { Play, Loader2, Database, Search } from "lucide-react";
 import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
 import { apiClient } from "@/api/client";
-import type { DatabaseConnection, QueryResult } from "@/types";
+import type { DatabaseConnection, QueryResult, VectorSearchContext } from "@/types";
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
   ssr: false,
@@ -20,7 +20,6 @@ const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
 const SQL_DEFAULT = "-- Welcome to Muzli!\n-- Write your SQL queries here\n\nSELECT version();";
 
 const MONGO_DEFAULT = `// MongoDB Query
-// Write your query as JSON
 {
   "collection": "users",
   "operation": "find",
@@ -28,11 +27,29 @@ const MONGO_DEFAULT = `// MongoDB Query
   "limit": 50
 }`;
 
+function buildPineconeDefault(ctx?: VectorSearchContext | null) {
+  const index = ctx?.index || "my-index";
+  const ns = ctx?.namespace ? `\n  "namespace": "${ctx.namespace}",` : "";
+  return `{
+  "operation": "query",
+  "index": "${index}",${ns}
+  "vector": [0.1, 0.2, 0.3],
+  "topK": 10,
+  "includeMetadata": true,
+  "includeValues": false
+}`;
+}
+
+const PINECONE_LIST_INDEXES = `{
+  "operation": "list_indexes"
+}`;
+
 interface EditorProps {
   selectedConnection: DatabaseConnection | null;
   onQueryExecute: (result: QueryResult) => void;
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
+  vectorContext?: VectorSearchContext | null;
 }
 
 export function Editor({
@@ -40,15 +57,31 @@ export function Editor({
   onQueryExecute,
   isLoading,
   setIsLoading,
+  vectorContext,
 }: EditorProps) {
   const isMongo = selectedConnection?.type === "mongodb";
+  const isPinecone = selectedConnection?.type === "pinecone" || selectedConnection?.type === "turbopuffer";
+  const isJson = isMongo || isPinecone;
+
   const [query, setQuery] = useState(SQL_DEFAULT);
 
   useEffect(() => {
-    if (selectedConnection) {
-      setQuery(isMongo ? MONGO_DEFAULT : SQL_DEFAULT);
+    if (!selectedConnection) return;
+    if (isPinecone) {
+      setQuery(buildPineconeDefault(vectorContext));
+    } else if (isMongo) {
+      setQuery(MONGO_DEFAULT);
+    } else {
+      setQuery(SQL_DEFAULT);
     }
-  }, [selectedConnection?.id, isMongo]);
+  }, [selectedConnection?.id, isMongo, isPinecone]);
+
+  // Update query when vector context changes (index/namespace selected in sidebar)
+  useEffect(() => {
+    if (isPinecone && vectorContext) {
+      setQuery(buildPineconeDefault(vectorContext));
+    }
+  }, [vectorContext?.index, vectorContext?.namespace, isPinecone]);
 
   const executeMutation = useMutation({
     mutationFn: () => {
@@ -71,44 +104,79 @@ export function Editor({
     executeMutation.mutate();
   };
 
+  const editorLabel = isPinecone
+    ? "Vector Search"
+    : isMongo
+      ? "MongoDB"
+      : selectedConnection?.name || "";
+
+  const buttonLabel = isPinecone ? "Search" : "Run Query";
+  const buttonIcon = isPinecone ? (
+    <Search className="mr-1.5 h-3 w-3" />
+  ) : (
+    <Play className="mr-1.5 h-3 w-3" />
+  );
+
   return (
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between px-3 h-10 border-b">
         <div className="flex items-center gap-2">
-          <h3 className="text-sm font-medium">Query Editor</h3>
+          <h3 className="text-sm font-medium">{isPinecone ? "Vector Query" : "Query Editor"}</h3>
           {selectedConnection && (
             <div className="flex items-center gap-1 text-xs text-muted-foreground">
               <Database className="h-3 w-3" />
-              {isMongo ? "MongoDB" : selectedConnection.name}
+              {editorLabel}
+              {vectorContext?.index && isPinecone && (
+                <span className="text-teal-400">
+                  / {vectorContext.index}
+                  {vectorContext.namespace ? ` / ${vectorContext.namespace}` : ""}
+                </span>
+              )}
             </div>
           )}
         </div>
 
-        <Button
-          onClick={handleExecute}
-          disabled={!selectedConnection || !query.trim() || isLoading}
-          size="sm"
-          className="h-7 text-xs px-2.5"
-        >
-          {isLoading ? (
-            <>
-              <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
-              Running...
-            </>
-          ) : (
-            <>
-              <Play className="mr-1.5 h-3 w-3" />
-              Run Query
-            </>
+        <div className="flex items-center gap-1.5">
+          {isPinecone && (
+            <Button
+              onClick={() => {
+                setQuery(PINECONE_LIST_INDEXES);
+                setTimeout(handleExecute, 50);
+              }}
+              disabled={!selectedConnection || isLoading}
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs px-2.5"
+            >
+              List Indexes
+            </Button>
           )}
-        </Button>
+          <Button
+            onClick={handleExecute}
+            disabled={!selectedConnection || !query.trim() || isLoading}
+            size="sm"
+            className="h-7 text-xs px-2.5"
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+                Running...
+              </>
+            ) : (
+              <>
+                {buttonIcon}
+                {buttonLabel}
+              </>
+            )}
+          </Button>
+        </div>
       </div>
 
       <div className="flex-1">
         {selectedConnection ? (
           <MonacoEditor
             height="100%"
-            language={isMongo ? "json" : "sql"}
+            language={isJson ? "json" : "sql"}
             theme="vs-dark"
             value={query}
             onChange={(value) => setQuery(value || "")}

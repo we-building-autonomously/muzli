@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Plus, Database, Loader2 } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Plus, Database, Loader2, ChevronRight, ChevronDown, Layers, FolderOpen } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { ConnectionDialog } from "@/components/dialogs/ConnectionDialog";
 import { apiClient } from "@/api/client";
-import type { DatabaseConnection, TableData } from "@/types";
+import type { DatabaseConnection, TableData, VectorSearchContext } from "@/types";
 
 const DB_LABELS: Record<string, { label: string; color: string }> = {
   postgres: { label: "PG", color: "bg-emerald-500/15 text-emerald-400" },
@@ -18,10 +18,21 @@ const DB_LABELS: Record<string, { label: string; color: string }> = {
   turbopuffer: { label: "TP", color: "bg-violet-500/15 text-violet-400" },
 };
 
+interface PineconeIndexInfo {
+  name: string;
+  host: string;
+  metric: string;
+  dimension: number;
+  namespaces: string[];
+  expanded: boolean;
+  loading: boolean;
+}
+
 interface SidebarProps {
   selectedConnection: DatabaseConnection | null;
   onConnectionSelect: (connection: DatabaseConnection) => void;
   onTableSelect: (data: TableData) => void;
+  onVectorContextSelect?: (ctx: VectorSearchContext) => void;
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
   restoredConnectionId: string | null;
@@ -31,19 +42,23 @@ export function Sidebar({
   selectedConnection,
   onConnectionSelect,
   onTableSelect,
+  onVectorContextSelect,
   isLoading,
   setIsLoading,
   restoredConnectionId,
 }: SidebarProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [hasRestored, setHasRestored] = useState(false);
+  const [expandedConnections, setExpandedConnections] = useState<Set<string>>(new Set());
+  const [pineconeIndexes, setPineconeIndexes] = useState<Record<string, PineconeIndexInfo[]>>({});
+  const [loadingIndexes, setLoadingIndexes] = useState<Set<string>>(new Set());
+  const [selectedVectorCtx, setSelectedVectorCtx] = useState<string | null>(null);
 
   const { data: connections, refetch: refetchConnections } = useQuery({
     queryKey: ["connections"],
     queryFn: () => apiClient.getConnections(),
   });
 
-  // Auto-select restored connection once connections are loaded
   useEffect(() => {
     if (!hasRestored && restoredConnectionId && connections?.length) {
       const match = connections.find((c) => c.id === restoredConnectionId);
@@ -59,11 +74,134 @@ export function Sidebar({
     setIsDialogOpen(false);
   };
 
+  const isVectorDb = (type: string) => type === "pinecone" || type === "turbopuffer";
+
   const getSubline = (conn: DatabaseConnection) => {
     if (conn.type === "sqlite") return conn.host;
-    if (conn.type === "pinecone" || conn.type === "turbopuffer") return conn.host;
+    if (isVectorDb(conn.type)) return conn.host || "auto-discover";
     if (conn.type === "redis") return `${conn.host}:${conn.port}`;
     return `${conn.host}:${conn.port}/${conn.database}`;
+  };
+
+  const loadPineconeIndexes = useCallback(async (connectionId: string) => {
+    if (loadingIndexes.has(connectionId)) return;
+    setLoadingIndexes((prev) => new Set(prev).add(connectionId));
+    try {
+      const databases = await apiClient.getDatabases(connectionId);
+      const indexes: PineconeIndexInfo[] = databases.map((db) => ({
+        name: db.name,
+        host: db.collation || "",
+        metric: db.encoding || "",
+        dimension: 0,
+        namespaces: [],
+        expanded: false,
+        loading: false,
+      }));
+      setPineconeIndexes((prev) => ({ ...prev, [connectionId]: indexes }));
+    } catch (err) {
+      console.error("Failed to load indexes:", err);
+    } finally {
+      setLoadingIndexes((prev) => {
+        const next = new Set(prev);
+        next.delete(connectionId);
+        return next;
+      });
+    }
+  }, [loadingIndexes]);
+
+  const loadNamespaces = useCallback(async (connectionId: string, indexName: string, indexHost: string) => {
+    setPineconeIndexes((prev) => {
+      const indexes = prev[connectionId]?.map((idx) =>
+        idx.name === indexName ? { ...idx, loading: true } : idx
+      );
+      return { ...prev, [connectionId]: indexes || [] };
+    });
+
+    try {
+      // We need to temporarily update the connection host to this index's host
+      // to get namespaces. We'll use the schemas endpoint which returns namespaces for Pinecone.
+      const schemas = await apiClient.getSchemas(connectionId);
+      const namespaces = schemas.map((s) => s.name || "(default)");
+
+      setPineconeIndexes((prev) => {
+        const indexes = prev[connectionId]?.map((idx) =>
+          idx.name === indexName
+            ? { ...idx, namespaces, expanded: true, loading: false }
+            : idx
+        );
+        return { ...prev, [connectionId]: indexes || [] };
+      });
+    } catch (err) {
+      console.error("Failed to load namespaces:", err);
+      setPineconeIndexes((prev) => {
+        const indexes = prev[connectionId]?.map((idx) =>
+          idx.name === indexName
+            ? { ...idx, namespaces: ["(default)"], expanded: true, loading: false }
+            : idx
+        );
+        return { ...prev, [connectionId]: indexes || [] };
+      });
+    }
+  }, []);
+
+  const toggleConnection = (connId: string, connType: string) => {
+    setExpandedConnections((prev) => {
+      const next = new Set(prev);
+      if (next.has(connId)) {
+        next.delete(connId);
+      } else {
+        next.add(connId);
+        if (isVectorDb(connType) && !pineconeIndexes[connId]) {
+          loadPineconeIndexes(connId);
+        }
+      }
+      return next;
+    });
+  };
+
+  const toggleIndex = (connectionId: string, indexName: string, indexHost: string) => {
+    const indexes = pineconeIndexes[connectionId];
+    const idx = indexes?.find((i) => i.name === indexName);
+    if (idx?.expanded) {
+      setPineconeIndexes((prev) => {
+        const updated = prev[connectionId]?.map((i) =>
+          i.name === indexName ? { ...i, expanded: false } : i
+        );
+        return { ...prev, [connectionId]: updated || [] };
+      });
+    } else if (!idx?.namespaces.length) {
+      loadNamespaces(connectionId, indexName, indexHost);
+    } else {
+      setPineconeIndexes((prev) => {
+        const updated = prev[connectionId]?.map((i) =>
+          i.name === indexName ? { ...i, expanded: true } : i
+        );
+        return { ...prev, [connectionId]: updated || [] };
+      });
+    }
+  };
+
+  const handleIndexClick = (connectionId: string, idx: PineconeIndexInfo) => {
+    const ctxKey = `${connectionId}:${idx.name}:`;
+    setSelectedVectorCtx(ctxKey);
+    onVectorContextSelect?.({
+      index: idx.name,
+      host: idx.host,
+      namespace: "",
+      dimension: idx.dimension,
+    });
+  };
+
+  const handleNamespaceClick = (connectionId: string, idx: PineconeIndexInfo, namespace: string) => {
+    const ns = namespace === "(default)" ? "" : namespace;
+    const ctxKey = `${connectionId}:${idx.name}:${ns}`;
+    setSelectedVectorCtx(ctxKey);
+    onVectorContextSelect?.({
+      index: idx.name,
+      host: idx.host,
+      namespace: ns,
+      dimension: idx.dimension,
+    });
   };
 
   return (
@@ -84,36 +222,136 @@ export function Sidebar({
       <div className="flex-1 overflow-auto p-1.5">
         {connections?.map((connection) => {
           const db = DB_LABELS[connection.type] || DB_LABELS.postgres;
+          const isExpanded = expandedConnections.has(connection.id);
+          const isVector = isVectorDb(connection.type);
+          const indexes = pineconeIndexes[connection.id] || [];
+          const isLoadingIdx = loadingIndexes.has(connection.id);
+
           return (
-            <div
-              key={connection.id}
-              className={`
-                p-2 rounded-md cursor-pointer transition-colors mb-1
-                ${
-                  selectedConnection?.id === connection.id
-                    ? "bg-accent text-accent-foreground"
-                    : "hover:bg-muted"
-                }
-              `}
-              onClick={() => onConnectionSelect(connection)}
-            >
-              <div className="flex items-center gap-2">
-                <Database className="h-3.5 w-3.5 flex-shrink-0 text-emerald-500" />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-sm font-medium truncate">{connection.name}</span>
-                    <span className={`text-[10px] font-medium px-1 py-0 rounded ${db.color}`}>
-                      {db.label}
+            <div key={connection.id} className="mb-0.5">
+              {/* Connection row */}
+              <div
+                className={`
+                  p-2 rounded-md cursor-pointer transition-colors
+                  ${
+                    selectedConnection?.id === connection.id
+                      ? "bg-accent text-accent-foreground"
+                      : "hover:bg-muted"
+                  }
+                `}
+                onClick={() => {
+                  onConnectionSelect(connection);
+                  if (isVector) {
+                    toggleConnection(connection.id, connection.type);
+                  }
+                }}
+              >
+                <div className="flex items-center gap-1.5">
+                  {isVector ? (
+                    <span className="w-3.5 flex items-center justify-center flex-shrink-0">
+                      {isLoadingIdx ? (
+                        <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                      ) : isExpanded ? (
+                        <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                      ) : (
+                        <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                      )}
                     </span>
+                  ) : (
+                    <Database className="h-3.5 w-3.5 flex-shrink-0 text-emerald-500" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-sm font-medium truncate">{connection.name}</span>
+                      <span className={`text-[10px] font-medium px-1 py-0 rounded ${db.color}`}>
+                        {db.label}
+                      </span>
+                    </div>
+                    {!isVector && (
+                      <div className="text-xs text-muted-foreground truncate">
+                        {getSubline(connection)}
+                      </div>
+                    )}
                   </div>
-                  <div className="text-xs text-muted-foreground truncate">
-                    {getSubline(connection)}
-                  </div>
+                  {isLoading && selectedConnection?.id === connection.id && (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin flex-shrink-0" />
+                  )}
                 </div>
-                {isLoading && selectedConnection?.id === connection.id && (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin flex-shrink-0" />
-                )}
               </div>
+
+              {/* Pinecone index tree */}
+              {isVector && isExpanded && (
+                <div className="ml-3 pl-2 border-l border-border/50">
+                  {indexes.length === 0 && !isLoadingIdx && (
+                    <div className="py-2 px-2 text-[10px] text-muted-foreground">
+                      No indexes found
+                    </div>
+                  )}
+                  {indexes.map((idx) => (
+                    <div key={idx.name}>
+                      {/* Index row */}
+                      <div
+                        className={`
+                          flex items-center gap-1.5 py-1.5 px-2 rounded-md cursor-pointer text-xs transition-colors
+                          ${selectedVectorCtx?.startsWith(`${connection.id}:${idx.name}:`) && !selectedVectorCtx?.includes(":", `${connection.id}:${idx.name}:`.length)
+                            ? "bg-accent/50 text-accent-foreground"
+                            : "hover:bg-muted/50"
+                          }
+                        `}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleIndex(connection.id, idx.name, idx.host);
+                          handleIndexClick(connection.id, idx);
+                        }}
+                      >
+                        {idx.loading ? (
+                          <Loader2 className="h-3 w-3 animate-spin text-muted-foreground flex-shrink-0" />
+                        ) : idx.expanded ? (
+                          <ChevronDown className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                        ) : (
+                          <ChevronRight className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                        )}
+                        <Layers className="h-3 w-3 text-teal-400 flex-shrink-0" />
+                        <span className="font-medium truncate">{idx.name}</span>
+                        {idx.metric && (
+                          <span className="text-[10px] text-muted-foreground ml-auto flex-shrink-0">
+                            {idx.metric}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Namespaces */}
+                      {idx.expanded && (
+                        <div className="ml-3 pl-2 border-l border-border/30">
+                          {idx.namespaces.map((ns) => {
+                            const nsKey = ns === "(default)" ? "" : ns;
+                            const ctxKey = `${connection.id}:${idx.name}:${nsKey}`;
+                            return (
+                              <div
+                                key={ns}
+                                className={`
+                                  flex items-center gap-1.5 py-1 px-2 rounded-md cursor-pointer text-xs transition-colors
+                                  ${selectedVectorCtx === ctxKey
+                                    ? "bg-accent/50 text-accent-foreground"
+                                    : "hover:bg-muted/50 text-muted-foreground"
+                                  }
+                                `}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleNamespaceClick(connection.id, idx, ns);
+                                }}
+                              >
+                                <FolderOpen className="h-3 w-3 text-teal-300/60 flex-shrink-0" />
+                                <span className="truncate">{ns}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           );
         })}

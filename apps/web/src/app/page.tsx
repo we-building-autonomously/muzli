@@ -6,7 +6,7 @@ import { QueryProvider } from "@/components/providers/QueryProvider";
 import { Sidebar } from "@/components/sidebar/Sidebar";
 import { Editor } from "@/components/editor/Editor";
 import { Results } from "@/components/results/Results";
-import type { DatabaseConnection, QueryResult, TableData } from "@/types";
+import type { DatabaseConnection, QueryResult, TableData, VectorSearchContext } from "@/types";
 
 const STORAGE_KEY = "muzli:selectedConnectionId";
 
@@ -17,8 +17,8 @@ function MuzliApp() {
   const [tableData, setTableData] = useState<TableData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [restoredConnectionId, setRestoredConnectionId] = useState<string | null>(null);
+  const [vectorContext, setVectorContext] = useState<VectorSearchContext | null>(null);
 
-  // Restore persisted connection ID on mount
   useEffect(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
@@ -30,6 +30,9 @@ function MuzliApp() {
     setSelectedConnection(connection);
     setQueryResult(null);
     setTableData(null);
+    if (connection.type !== "pinecone" && connection.type !== "turbopuffer") {
+      setVectorContext(null);
+    }
     try {
       localStorage.setItem(STORAGE_KEY, connection.id);
     } catch {}
@@ -43,6 +46,10 @@ function MuzliApp() {
   const handleTableSelect = (data: TableData) => {
     setTableData(data);
     setQueryResult(null);
+  };
+
+  const handleVectorContextSelect = (ctx: VectorSearchContext) => {
+    setVectorContext(ctx);
   };
 
   return (
@@ -60,6 +67,7 @@ function MuzliApp() {
               selectedConnection={selectedConnection}
               onConnectionSelect={handleConnectionSelect}
               onTableSelect={handleTableSelect}
+              onVectorContextSelect={handleVectorContextSelect}
               isLoading={isLoading}
               setIsLoading={setIsLoading}
               restoredConnectionId={restoredConnectionId}
@@ -76,6 +84,7 @@ function MuzliApp() {
                   onQueryExecute={handleQueryExecute}
                   isLoading={isLoading}
                   setIsLoading={setIsLoading}
+                  vectorContext={vectorContext}
                 />
               </Panel>
 

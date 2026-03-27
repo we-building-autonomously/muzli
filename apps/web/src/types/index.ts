@@ -97,6 +97,21 @@ export interface TableData {
   pageSize: number;
 }
 
+export interface PineconeIndex {
+  name: string;
+  host: string;
+  metric: string;
+  dimension: number;
+  namespaces: string[];
+}
+
+export interface VectorSearchContext {
+  index: string;
+  host: string;
+  namespace: string;
+  dimension: number;
+}
+
 export interface SidebarItem {
   id: string;
   type: "connection" | "database" | "schema" | "table" | "column";

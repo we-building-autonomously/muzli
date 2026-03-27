@@ -177,7 +177,7 @@ export function ConnectionDialog({
       ...prev,
       type,
       port: cfg.defaultPort,
-      host: type === "sqlite" ? "" : type === "turbopuffer" ? "api.turbopuffer.com" : "localhost",
+      host: type === "sqlite" || type === "pinecone" ? "" : type === "turbopuffer" ? "api.turbopuffer.com" : "localhost",
       username: "",
       password: "",
       database: "",
