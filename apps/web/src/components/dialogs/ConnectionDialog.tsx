@@ -114,8 +114,8 @@ const DB_CONFIGS = {
     label: "Pinecone",
     icon: "🌲",
     defaultPort: 443,
-    hostLabel: "Index Host",
-    hostPlaceholder: "index-abc1234.svc.pinecone.io",
+    hostLabel: "Index Host (optional)",
+    hostPlaceholder: "leave empty to auto-discover indexes",
     databaseLabel: "",
     databasePlaceholder: "",
     usernamePlaceholder: "",
@@ -229,9 +229,10 @@ export function ConnectionDialog({
   const isVectorDb = formData.type === "pinecone" || formData.type === "turbopuffer";
   const isFormValid =
     formData.name &&
-    formData.host &&
+    (isVectorDb || formData.host) &&
     (formData.type === "redis" || isVectorDb || formData.type === "sqlite" || formData.database) &&
-    (formData.type === "sqlite" || formData.type === "redis" || isVectorDb || formData.username);
+    (formData.type === "sqlite" || formData.type === "redis" || isVectorDb || formData.username) &&
+    (!isVectorDb || formData.password);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

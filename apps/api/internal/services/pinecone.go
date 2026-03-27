@@ -13,14 +13,16 @@ import (
 	"github.com/we-building-autonomously/muzli/internal/models"
 )
 
+const pineconeControlPlane = "api.pinecone.io"
+
 type PineconeService struct {
 	mu      sync.Mutex
 	clients map[string]*pineconeClient
 }
 
 type pineconeClient struct {
-	host   string
 	apiKey string
+	host   string // index-specific data plane host
 	http   *http.Client
 }
 
@@ -31,24 +33,26 @@ func NewPineconeService() *PineconeService {
 }
 
 func (s *PineconeService) getClient(conn *models.Connection) *pineconeClient {
-	key := conn.Host
+	key := conn.Password // API key is the unique identifier
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if c, ok := s.clients[key]; ok {
+		// Update host if provided (user may connect to a specific index)
+		if conn.Host != "" {
+			c.host = conn.Host
+		}
 		return c
 	}
 	c := &pineconeClient{
-		host:   conn.Host,
 		apiKey: conn.Password,
+		host:   conn.Host,
 		http:   &http.Client{Timeout: 30 * time.Second},
 	}
 	s.clients[key] = c
 	return c
 }
 
-func (c *pineconeClient) do(ctx context.Context, method, path string, body interface{}) (map[string]interface{}, error) {
-	url := fmt.Sprintf("https://%s%s", c.host, path)
-
+func (c *pineconeClient) doURL(ctx context.Context, method, fullURL string, body interface{}) (map[string]interface{}, error) {
 	var reqBody io.Reader
 	if body != nil {
 		b, err := json.Marshal(body)
@@ -58,7 +62,7 @@ func (c *pineconeClient) do(ctx context.Context, method, path string, body inter
 		reqBody = bytes.NewReader(b)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, url, reqBody)
+	req, err := http.NewRequestWithContext(ctx, method, fullURL, reqBody)
 	if err != nil {
 		return nil, err
 	}
@@ -89,29 +93,79 @@ func (c *pineconeClient) do(ctx context.Context, method, path string, body inter
 	return result, nil
 }
 
+// controlPlane calls the Pinecone control plane API
+func (c *pineconeClient) controlPlane(ctx context.Context, method, path string, body interface{}) (map[string]interface{}, error) {
+	return c.doURL(ctx, method, fmt.Sprintf("https://%s%s", pineconeControlPlane, path), body)
+}
+
+// dataPlane calls a specific index's data plane API
+func (c *pineconeClient) dataPlane(ctx context.Context, host, method, path string, body interface{}) (map[string]interface{}, error) {
+	return c.doURL(ctx, method, fmt.Sprintf("https://%s%s", host, path), body)
+}
+
+// resolveHost gets the data plane host for an index from the control plane
+func (c *pineconeClient) resolveHost(ctx context.Context, indexName string) (string, error) {
+	// If client already has a host set (user provided index host directly), use it
+	if c.host != "" && c.host != pineconeControlPlane {
+		return c.host, nil
+	}
+
+	result, err := c.controlPlane(ctx, "GET", "/indexes/"+indexName, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve index host: %w", err)
+	}
+	host, ok := result["host"].(string)
+	if !ok || host == "" {
+		return "", fmt.Errorf("host not found for index %s", indexName)
+	}
+	return host, nil
+}
+
 func (s *PineconeService) TestConnection(req models.TestConnectionRequest) (*models.TestConnectionResponse, error) {
-	conn := &models.Connection{Host: req.Host, Password: req.Password, SSL: true}
-	client := s.getClient(conn)
+	client := &pineconeClient{
+		apiKey: req.Password,
+		host:   req.Host,
+		http:   &http.Client{Timeout: 10 * time.Second},
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	result, err := client.do(ctx, "GET", "/describe_index_stats", nil)
-	if err != nil {
-		return &models.TestConnectionResponse{Success: false, Message: err.Error()}, nil
+	// If user provided a specific index host, try describe_index_stats on it
+	if req.Host != "" && req.Host != pineconeControlPlane {
+		result, err := client.dataPlane(ctx, req.Host, "POST", "/describe_index_stats", map[string]interface{}{})
+		if err == nil {
+			dim := "Pinecone"
+			if d, ok := result["dimension"]; ok {
+				dim = fmt.Sprintf("Pinecone (dimension: %v)", d)
+			}
+			return &models.TestConnectionResponse{
+				Success: true,
+				Message: "Connection successful",
+				Version: dim,
+			}, nil
+		}
+		// If that fails, fall through to control plane test
 	}
 
-	dim := ""
-	if d, ok := result["dimension"]; ok {
-		dim = fmt.Sprintf("Pinecone (dimension: %v)", d)
-	} else {
-		dim = "Pinecone"
+	// Test via control plane: list indexes
+	result, err := client.controlPlane(ctx, "GET", "/indexes", nil)
+	if err != nil {
+		return &models.TestConnectionResponse{
+			Success: false,
+			Message: fmt.Sprintf("Connection failed: %s", err.Error()),
+		}, nil
+	}
+
+	indexCount := 0
+	if indexes, ok := result["indexes"].([]interface{}); ok {
+		indexCount = len(indexes)
 	}
 
 	return &models.TestConnectionResponse{
 		Success: true,
 		Message: "Connection successful",
-		Version: dim,
+		Version: fmt.Sprintf("Pinecone (%d indexes)", indexCount),
 	}, nil
 }
 
@@ -134,13 +188,30 @@ func (s *PineconeService) ExecuteQuery(connectionID, query string, connectionSer
 
 	operation, _ := parsed["operation"].(string)
 	if operation == "" {
-		return nil, fmt.Errorf("query must include 'operation' field (query, upsert, fetch, delete)")
+		return nil, fmt.Errorf("query must include 'operation' field (query, upsert, fetch, delete, list_indexes)")
+	}
+
+	// Resolve the data plane host
+	indexName, _ := parsed["index"].(string)
+	host := client.host
+	if indexName != "" {
+		resolved, err := client.resolveHost(ctx, indexName)
+		if err != nil {
+			return nil, err
+		}
+		host = resolved
 	}
 
 	var result map[string]interface{}
 
 	switch operation {
+	case "list_indexes":
+		result, err = client.controlPlane(ctx, "GET", "/indexes", nil)
+
 	case "query":
+		if host == "" {
+			return nil, fmt.Errorf("specify 'index' field or set index host in connection")
+		}
 		body := map[string]interface{}{}
 		if v, ok := parsed["vector"]; ok {
 			body["vector"] = v
@@ -164,9 +235,12 @@ func (s *PineconeService) ExecuteQuery(connectionID, query string, connectionSer
 		if v, ok := parsed["includeValues"]; ok {
 			body["includeValues"] = v
 		}
-		result, err = client.do(ctx, "POST", "/query", body)
+		result, err = client.dataPlane(ctx, host, "POST", "/query", body)
 
 	case "upsert":
+		if host == "" {
+			return nil, fmt.Errorf("specify 'index' field or set index host in connection")
+		}
 		body := map[string]interface{}{}
 		if v, ok := parsed["vectors"]; ok {
 			body["vectors"] = v
@@ -174,9 +248,12 @@ func (s *PineconeService) ExecuteQuery(connectionID, query string, connectionSer
 		if v, ok := parsed["namespace"]; ok && v != "" {
 			body["namespace"] = v
 		}
-		result, err = client.do(ctx, "POST", "/vectors/upsert", body)
+		result, err = client.dataPlane(ctx, host, "POST", "/vectors/upsert", body)
 
 	case "fetch":
+		if host == "" {
+			return nil, fmt.Errorf("specify 'index' field or set index host in connection")
+		}
 		ids, _ := parsed["ids"].([]interface{})
 		namespace, _ := parsed["namespace"].(string)
 		path := "/vectors/fetch?"
@@ -189,9 +266,12 @@ func (s *PineconeService) ExecuteQuery(connectionID, query string, connectionSer
 		if namespace != "" {
 			path += "&namespace=" + namespace
 		}
-		result, err = client.do(ctx, "GET", path, nil)
+		result, err = client.dataPlane(ctx, host, "GET", path, nil)
 
 	case "delete":
+		if host == "" {
+			return nil, fmt.Errorf("specify 'index' field or set index host in connection")
+		}
 		body := map[string]interface{}{}
 		if v, ok := parsed["ids"]; ok {
 			body["ids"] = v
@@ -205,10 +285,10 @@ func (s *PineconeService) ExecuteQuery(connectionID, query string, connectionSer
 		if v, ok := parsed["filter"]; ok {
 			body["filter"] = v
 		}
-		result, err = client.do(ctx, "POST", "/vectors/delete", body)
+		result, err = client.dataPlane(ctx, host, "POST", "/vectors/delete", body)
 
 	default:
-		return nil, fmt.Errorf("unknown operation: %s (supported: query, upsert, fetch, delete)", operation)
+		return nil, fmt.Errorf("unknown operation: %s (supported: list_indexes, query, upsert, fetch, delete)", operation)
 	}
 
 	if err != nil {
@@ -217,7 +297,6 @@ func (s *PineconeService) ExecuteQuery(connectionID, query string, connectionSer
 
 	executionTime := time.Since(startTime).Seconds() * 1000
 
-	// Convert result to rows
 	rows := []models.RowResult{}
 	columns := []models.ColumnResult{{Name: "result", Type: "json"}}
 
@@ -230,13 +309,30 @@ func (s *PineconeService) ExecuteQuery(connectionID, query string, connectionSer
 		}
 		for _, m := range matches {
 			match, _ := m.(map[string]interface{})
-			row := models.RowResult{
+			rows = append(rows, models.RowResult{
 				"id":       match["id"],
 				"score":    match["score"],
 				"values":   match["values"],
 				"metadata": match["metadata"],
-			}
-			rows = append(rows, row)
+			})
+		}
+	} else if indexes, ok := result["indexes"].([]interface{}); ok {
+		columns = []models.ColumnResult{
+			{Name: "name", Type: "string"},
+			{Name: "dimension", Type: "int"},
+			{Name: "metric", Type: "string"},
+			{Name: "host", Type: "string"},
+			{Name: "status", Type: "object"},
+		}
+		for _, idx := range indexes {
+			index, _ := idx.(map[string]interface{})
+			rows = append(rows, models.RowResult{
+				"name":      index["name"],
+				"dimension": index["dimension"],
+				"metric":    index["metric"],
+				"host":      index["host"],
+				"status":    index["status"],
+			})
 		}
 	} else if vectors, ok := result["vectors"].(map[string]interface{}); ok {
 		columns = []models.ColumnResult{
@@ -246,12 +342,11 @@ func (s *PineconeService) ExecuteQuery(connectionID, query string, connectionSer
 		}
 		for id, v := range vectors {
 			vec, _ := v.(map[string]interface{})
-			row := models.RowResult{
+			rows = append(rows, models.RowResult{
 				"id":       id,
 				"values":   vec["values"],
 				"metadata": vec["metadata"],
-			}
-			rows = append(rows, row)
+			})
 		}
 	} else {
 		rows = append(rows, models.RowResult{"result": result})
@@ -270,16 +365,45 @@ func (s *PineconeService) GetDatabases(connectionID string, connectionService *C
 	if err != nil {
 		return nil, err
 	}
-	return []models.DatabaseInfo{
-		{Name: conn.Host, Owner: "pinecone"},
-	}, nil
+	client := s.getClient(conn)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	result, err := client.controlPlane(ctx, "GET", "/indexes", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var databases []models.DatabaseInfo
+	if indexes, ok := result["indexes"].([]interface{}); ok {
+		for _, idx := range indexes {
+			index, _ := idx.(map[string]interface{})
+			name, _ := index["name"].(string)
+			host, _ := index["host"].(string)
+			metric, _ := index["metric"].(string)
+			databases = append(databases, models.DatabaseInfo{
+				Name:  name,
+				Owner: "pinecone",
+				Encoding: metric,
+				Collation: host,
+			})
+		}
+	}
+	return databases, nil
 }
 
 func (s *PineconeService) getIndexStats(conn *models.Connection) (map[string]interface{}, error) {
 	client := s.getClient(conn)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	return client.do(ctx, "GET", "/describe_index_stats", nil)
+
+	host := client.host
+	if host == "" || host == pineconeControlPlane {
+		return nil, fmt.Errorf("no index host configured — select a specific index")
+	}
+
+	return client.dataPlane(ctx, host, "POST", "/describe_index_stats", map[string]interface{}{})
 }
 
 func (s *PineconeService) GetSchemas(connectionID string, connectionService *ConnectionService) ([]models.SchemaInfo, error) {
@@ -290,7 +414,7 @@ func (s *PineconeService) GetSchemas(connectionID string, connectionService *Con
 
 	stats, err := s.getIndexStats(conn)
 	if err != nil {
-		return nil, err
+		return []models.SchemaInfo{{Name: "", Owner: "default"}}, nil
 	}
 
 	schemas := []models.SchemaInfo{{Name: "", Owner: "default"}}
@@ -312,7 +436,7 @@ func (s *PineconeService) GetTables(connectionID, schema string, connectionServi
 
 	stats, err := s.getIndexStats(conn)
 	if err != nil {
-		return nil, err
+		return []models.TableInfo{{Name: "(default)", Schema: "vectors", Type: "namespace"}}, nil
 	}
 
 	tables := []models.TableInfo{}
@@ -355,6 +479,11 @@ func (s *PineconeService) GetTableData(req models.TableDataRequest, connectionSe
 	}
 	client := s.getClient(conn)
 
+	host := client.host
+	if host == "" || host == pineconeControlPlane {
+		return nil, fmt.Errorf("no index host configured — set index host in connection")
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -363,21 +492,22 @@ func (s *PineconeService) GetTableData(req models.TableDataRequest, connectionSe
 		namespace = ""
 	}
 
-	// Use list endpoint to get vector IDs, then fetch them
-	path := "/vectors/list?"
-	if namespace != "" {
-		path += "namespace=" + namespace + "&"
-	}
 	limit := req.PageSize
 	if limit < 1 {
 		limit = 50
 	}
+
+	// Try list+fetch approach first
+	path := "/vectors/list?"
+	if namespace != "" {
+		path += "namespace=" + namespace + "&"
+	}
 	path += fmt.Sprintf("limit=%d", limit)
 
-	listResult, err := client.do(ctx, "GET", path, nil)
+	listResult, err := client.dataPlane(ctx, host, "GET", path, nil)
 	if err != nil {
-		// Fallback: try a zero-vector query
-		stats, statsErr := s.getIndexStats(conn)
+		// Fallback: zero-vector query
+		stats, statsErr := client.dataPlane(ctx, host, "POST", "/describe_index_stats", map[string]interface{}{})
 		if statsErr != nil {
 			return nil, err
 		}
@@ -395,7 +525,7 @@ func (s *PineconeService) GetTableData(req models.TableDataRequest, connectionSe
 		if namespace != "" {
 			body["namespace"] = namespace
 		}
-		queryResult, qErr := client.do(ctx, "POST", "/query", body)
+		queryResult, qErr := client.dataPlane(ctx, host, "POST", "/query", body)
 		if qErr != nil {
 			return nil, qErr
 		}
@@ -412,14 +542,12 @@ func (s *PineconeService) GetTableData(req models.TableDataRequest, connectionSe
 			}
 		}
 
-		columns := []models.ColumnInfo{
-			{Name: "id", DataType: "string", IsPrimaryKey: true},
-			{Name: "values", DataType: "vector"},
-			{Name: "metadata", DataType: "object", IsNullable: true},
-		}
-
 		return &models.TableDataResponse{
-			Columns:   columns,
+			Columns: []models.ColumnInfo{
+				{Name: "id", DataType: "string", IsPrimaryKey: true},
+				{Name: "values", DataType: "vector"},
+				{Name: "metadata", DataType: "object", IsNullable: true},
+			},
 			Rows:      rows,
 			TotalRows: len(rows),
 			Page:      1,
@@ -427,7 +555,6 @@ func (s *PineconeService) GetTableData(req models.TableDataRequest, connectionSe
 		}, nil
 	}
 
-	// Get IDs from list result
 	var ids []interface{}
 	if vectors, ok := listResult["vectors"].([]interface{}); ok {
 		for _, v := range vectors {
@@ -438,21 +565,22 @@ func (s *PineconeService) GetTableData(req models.TableDataRequest, connectionSe
 		}
 	}
 
+	columns := []models.ColumnInfo{
+		{Name: "id", DataType: "string", IsPrimaryKey: true},
+		{Name: "values", DataType: "vector"},
+		{Name: "metadata", DataType: "object", IsNullable: true},
+	}
+
 	if len(ids) == 0 {
 		return &models.TableDataResponse{
-			Columns: []models.ColumnInfo{
-				{Name: "id", DataType: "string", IsPrimaryKey: true},
-				{Name: "values", DataType: "vector"},
-				{Name: "metadata", DataType: "object", IsNullable: true},
-			},
-			Rows:     []models.RowResult{},
+			Columns:   columns,
+			Rows:      []models.RowResult{},
 			TotalRows: 0,
 			Page:      1,
 			PageSize:  limit,
 		}, nil
 	}
 
-	// Fetch full vectors
 	fetchPath := "/vectors/fetch?"
 	for i, id := range ids {
 		if i > 0 {
@@ -464,7 +592,7 @@ func (s *PineconeService) GetTableData(req models.TableDataRequest, connectionSe
 		fetchPath += "&namespace=" + namespace
 	}
 
-	fetchResult, err := client.do(ctx, "GET", fetchPath, nil)
+	fetchResult, err := client.dataPlane(ctx, host, "GET", fetchPath, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -479,12 +607,6 @@ func (s *PineconeService) GetTableData(req models.TableDataRequest, connectionSe
 				"metadata": vec["metadata"],
 			})
 		}
-	}
-
-	columns := []models.ColumnInfo{
-		{Name: "id", DataType: "string", IsPrimaryKey: true},
-		{Name: "values", DataType: "vector"},
-		{Name: "metadata", DataType: "object", IsNullable: true},
 	}
 
 	return &models.TableDataResponse{
