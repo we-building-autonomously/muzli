@@ -30,10 +30,11 @@ const MONGO_DEFAULT = `// MongoDB Query
 function buildPineconeDefault(ctx?: VectorSearchContext | null) {
   const index = ctx?.index || "my-index";
   const ns = ctx?.namespace ? `\n  "namespace": "${ctx.namespace}",` : "";
+  const dim = ctx?.dimension || 3;
   return `{
   "operation": "query",
   "index": "${index}",${ns}
-  "vector": [0.1, 0.2, 0.3],
+  "vector": [${Array(dim).fill("0.0").join(", ")}],
   "topK": 10,
   "includeMetadata": true,
   "includeValues": true

@@ -104,7 +104,7 @@ export function Sidebar({
         name: db.name,
         host: db.collation || "",
         metric: db.encoding || "",
-        dimension: 0,
+        dimension: parseInt(db.ctypes || "0") || 0,
         namespaces: [],
         expanded: false,
         loading: false,

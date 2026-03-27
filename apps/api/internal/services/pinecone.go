@@ -377,11 +377,13 @@ func (s *PineconeService) GetDatabases(conn *models.Connection) ([]models.Databa
 			name, _ := index["name"].(string)
 			host, _ := index["host"].(string)
 			metric, _ := index["metric"].(string)
+			dimension, _ := index["dimension"].(float64)
 			databases = append(databases, models.DatabaseInfo{
 				Name:      name,
 				Owner:     "pinecone",
 				Encoding:  metric,
 				Collation: host,
+				Ctypes:    fmt.Sprintf("%d", int(dimension)),
 			})
 		}
 	}
