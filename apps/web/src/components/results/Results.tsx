@@ -173,7 +173,7 @@ export function Results({ queryResult, tableData, isLoading, connectionType }: R
                                 NULL
                               </span>
                             ) : typeof value === "object" ? (
-                              <span className="text-blue-400">
+                              <span className="text-emerald-400">
                                 {JSON.stringify(value)}
                               </span>
                             ) : typeof value === "boolean" ? (

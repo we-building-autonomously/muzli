@@ -67,7 +67,7 @@ export function Sidebar({
               onClick={() => onConnectionSelect(connection)}
             >
               <div className="flex items-center gap-2">
-                <Database className={`h-3.5 w-3.5 flex-shrink-0 ${isMongo ? "text-green-500" : "text-blue-500"}`} />
+                <Database className={`h-3.5 w-3.5 flex-shrink-0 ${isMongo ? "text-green-500" : "text-emerald-500"}`} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
                     <span className="text-sm font-medium truncate">{connection.name}</span>
@@ -75,7 +75,7 @@ export function Sidebar({
                       className={`text-[10px] font-medium px-1 py-0 rounded ${
                         isMongo
                           ? "bg-green-500/15 text-green-500"
-                          : "bg-blue-500/15 text-blue-500"
+                          : "bg-blue-500/15 text-emerald-500"
                       }`}
                     >
                       {isMongo ? "MDB" : "PG"}
