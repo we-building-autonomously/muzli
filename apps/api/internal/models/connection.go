@@ -22,9 +22,9 @@ type CreateConnectionRequest struct {
 	Name         string `json:"name" binding:"required"`
 	Type         string `json:"type" binding:"required"`
 	Host         string `json:"host" binding:"required"`
-	Port         int    `json:"port" binding:"required,min=1,max=65535"`
-	DatabaseName string `json:"database" binding:"required"`
-	Username     string `json:"username" binding:"required"`
+	Port         int    `json:"port" binding:"omitempty,min=0,max=65535"`
+	DatabaseName string `json:"database"`
+	Username     string `json:"username"`
 	Password     string `json:"password"`
 	SSL          bool   `json:"ssl"`
 }
@@ -43,9 +43,9 @@ type UpdateConnectionRequest struct {
 type TestConnectionRequest struct {
 	Type         string `json:"type" binding:"required"`
 	Host         string `json:"host" binding:"required"`
-	Port         int    `json:"port" binding:"required,min=1,max=65535"`
-	DatabaseName string `json:"database" binding:"required"`
-	Username     string `json:"username" binding:"required"`
+	Port         int    `json:"port" binding:"omitempty,min=0,max=65535"`
+	DatabaseName string `json:"database"`
+	Username     string `json:"username"`
 	Password     string `json:"password"`
 	SSL          bool   `json:"ssl"`
 }

@@ -13,14 +13,20 @@ import (
 )
 
 type QueryService struct {
-	connections  map[string]*pgxpool.Pool
-	mongoService *MongoService
+	connections    map[string]*pgxpool.Pool
+	mongoService   *MongoService
+	mysqlService   *MySQLService
+	sqliteService  *SQLiteService
+	redisService   *RedisService
 }
 
 func NewQueryService() *QueryService {
 	return &QueryService{
-		connections:  make(map[string]*pgxpool.Pool),
-		mongoService: NewMongoService(),
+		connections:    make(map[string]*pgxpool.Pool),
+		mongoService:   NewMongoService(),
+		mysqlService:   NewMySQLService(),
+		sqliteService:  NewSQLiteService(),
+		redisService:   NewRedisService(),
 	}
 }
 
@@ -59,8 +65,15 @@ func (s *QueryService) getConnection(conn *models.Connection) (*pgxpool.Pool, er
 }
 
 func (s *QueryService) TestConnection(req models.TestConnectionRequest) (*models.TestConnectionResponse, error) {
-	if req.Type == "mongodb" {
+	switch req.Type {
+	case "mongodb":
 		return s.mongoService.TestConnection(req)
+	case "mysql":
+		return s.mysqlService.TestConnection(req)
+	case "sqlite":
+		return s.sqliteService.TestConnection(req)
+	case "redis":
+		return s.redisService.TestConnection(req)
 	}
 
 	conn := &models.Connection{
@@ -105,8 +118,15 @@ func (s *QueryService) ExecuteQuery(connectionID string, query string, connectio
 		return nil, fmt.Errorf("failed to get connection: %w", err)
 	}
 
-	if conn.Type == "mongodb" {
+	switch conn.Type {
+	case "mongodb":
 		return s.mongoService.ExecuteQuery(connectionID, query, connectionService)
+	case "mysql":
+		return s.mysqlService.ExecuteQuery(connectionID, query, connectionService)
+	case "sqlite":
+		return s.sqliteService.ExecuteQuery(connectionID, query, connectionService)
+	case "redis":
+		return s.redisService.ExecuteQuery(connectionID, query, connectionService)
 	}
 
 	pool, err := s.getConnection(conn)
@@ -201,8 +221,15 @@ func (s *QueryService) GetDatabases(connectionID string, connectionService *Conn
 		return nil, fmt.Errorf("failed to get connection: %w", err)
 	}
 
-	if conn.Type == "mongodb" {
+	switch conn.Type {
+	case "mongodb":
 		return s.mongoService.GetDatabases(connectionID, connectionService)
+	case "mysql":
+		return s.mysqlService.GetDatabases(connectionID, connectionService)
+	case "sqlite":
+		return s.sqliteService.GetDatabases(connectionID, connectionService)
+	case "redis":
+		return s.redisService.GetDatabases(connectionID, connectionService)
 	}
 
 	pool, err := s.getConnection(conn)
@@ -247,8 +274,15 @@ func (s *QueryService) GetSchemas(connectionID string, connectionService *Connec
 		return nil, fmt.Errorf("failed to get connection: %w", err)
 	}
 
-	if conn.Type == "mongodb" {
+	switch conn.Type {
+	case "mongodb":
 		return s.mongoService.GetSchemas(connectionID, connectionService)
+	case "mysql":
+		return s.mysqlService.GetSchemas(connectionID, connectionService)
+	case "sqlite":
+		return s.sqliteService.GetSchemas(connectionID, connectionService)
+	case "redis":
+		return s.redisService.GetSchemas(connectionID, connectionService)
 	}
 
 	pool, err := s.getConnection(conn)
@@ -291,8 +325,15 @@ func (s *QueryService) GetTables(connectionID, schema string, connectionService 
 		return nil, fmt.Errorf("failed to get connection: %w", err)
 	}
 
-	if conn.Type == "mongodb" {
+	switch conn.Type {
+	case "mongodb":
 		return s.mongoService.GetCollections(connectionID, connectionService)
+	case "mysql":
+		return s.mysqlService.GetTables(connectionID, schema, connectionService)
+	case "sqlite":
+		return s.sqliteService.GetTables(connectionID, schema, connectionService)
+	case "redis":
+		return s.redisService.GetTables(connectionID, schema, connectionService)
 	}
 
 	pool, err := s.getConnection(conn)
@@ -348,8 +389,15 @@ func (s *QueryService) GetColumns(connectionID, schema, table string, connection
 		return nil, fmt.Errorf("failed to get connection: %w", err)
 	}
 
-	if conn.Type == "mongodb" {
+	switch conn.Type {
+	case "mongodb":
 		return s.mongoService.GetColumns(connectionID, table, connectionService)
+	case "mysql":
+		return s.mysqlService.GetColumns(connectionID, schema, table, connectionService)
+	case "sqlite":
+		return s.sqliteService.GetColumns(connectionID, schema, table, connectionService)
+	case "redis":
+		return s.redisService.GetColumns(connectionID, schema, table, connectionService)
 	}
 
 	pool, err := s.getConnection(conn)
@@ -416,8 +464,15 @@ func (s *QueryService) GetTableData(req models.TableDataRequest, connectionServi
 		return nil, fmt.Errorf("failed to get connection: %w", err)
 	}
 
-	if conn.Type == "mongodb" {
+	switch conn.Type {
+	case "mongodb":
 		return s.mongoService.GetTableData(req, connectionService)
+	case "mysql":
+		return s.mysqlService.GetTableData(req, connectionService)
+	case "sqlite":
+		return s.sqliteService.GetTableData(req, connectionService)
+	case "redis":
+		return s.redisService.GetTableData(req, connectionService)
 	}
 
 	pool, err := s.getConnection(conn)
@@ -505,4 +560,7 @@ func (s *QueryService) Close() {
 	}
 	s.connections = make(map[string]*pgxpool.Pool)
 	s.mongoService.Close()
+	s.mysqlService.Close()
+	s.sqliteService.Close()
+	s.redisService.Close()
 }

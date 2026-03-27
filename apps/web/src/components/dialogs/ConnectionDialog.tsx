@@ -45,11 +45,20 @@ export function ConnectionDialog({
     message: string;
   }>({ status: null, message: "" });
 
-  const handleTypeChange = (type: "postgres" | "mongodb") => {
+  const dbTypes = [
+    { value: "postgres" as const, label: "PostgreSQL", port: 5432 },
+    { value: "mongodb" as const, label: "MongoDB", port: 27017 },
+    { value: "mysql" as const, label: "MySQL", port: 3306 },
+    { value: "sqlite" as const, label: "SQLite", port: 0 },
+    { value: "redis" as const, label: "Redis", port: 6379 },
+  ];
+
+  const handleTypeChange = (type: "postgres" | "mongodb" | "mysql" | "sqlite" | "redis") => {
+    const dbType = dbTypes.find((t) => t.value === type);
     setFormData((prev) => ({
       ...prev,
       type,
-      port: type === "mongodb" ? 27017 : 5432,
+      port: dbType?.port ?? 5432,
     }));
     setTestResult({ status: null, message: "" });
   };
@@ -98,7 +107,7 @@ export function ConnectionDialog({
   };
 
   const isFormValid =
-    formData.name && formData.host && formData.database && formData.username;
+    formData.name && formData.host && (formData.type === "redis" || formData.database) && (formData.type === "sqlite" || formData.type === "redis" || formData.username);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -114,29 +123,21 @@ export function ConnectionDialog({
           {/* Database Type Toggle */}
           <div className="grid gap-1.5">
             <Label className="text-xs">Database Type</Label>
-            <div className="flex gap-1 p-0.5 bg-muted rounded-md w-fit">
-              <button
-                type="button"
-                onClick={() => handleTypeChange("postgres")}
-                className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
-                  formData.type === "postgres"
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                PostgreSQL
-              </button>
-              <button
-                type="button"
-                onClick={() => handleTypeChange("mongodb")}
-                className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
-                  formData.type === "mongodb"
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                MongoDB
-              </button>
+            <div className="flex gap-1 p-0.5 bg-muted rounded-md w-fit flex-wrap">
+              {dbTypes.map((dbType) => (
+                <button
+                  key={dbType.value}
+                  type="button"
+                  onClick={() => handleTypeChange(dbType.value)}
+                  className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
+                    formData.type === dbType.value
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {dbType.label}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -149,7 +150,7 @@ export function ConnectionDialog({
               onChange={(e) =>
                 setFormData((prev) => ({ ...prev, name: e.target.value }))
               }
-              placeholder={formData.type === "mongodb" ? "My MongoDB" : "My PostgreSQL DB"}
+              placeholder={formData.type === "sqlite" ? "My SQLite DB" : formData.type === "redis" ? "My Redis" : formData.type === "mysql" ? "My MySQL DB" : formData.type === "mongodb" ? "My MongoDB" : "My PostgreSQL DB"}
             />
           </div>
 
@@ -163,9 +164,10 @@ export function ConnectionDialog({
                 onChange={(e) =>
                   setFormData((prev) => ({ ...prev, host: e.target.value }))
                 }
-                placeholder="localhost"
+                placeholder={formData.type === "sqlite" ? "/path/to/database.db" : "localhost"}
               />
             </div>
+            {formData.type !== "sqlite" && (
             <div>
               <Label htmlFor="port" className="text-xs">Port</Label>
               <Input
@@ -173,19 +175,21 @@ export function ConnectionDialog({
                 className="h-8 text-sm"
                 type="number"
                 value={formData.port}
-                onChange={(e) =>
+                onChange={(e) => {
+                  const defaultPort = dbTypes.find((t) => t.value === formData.type)?.port ?? 5432;
                   setFormData((prev) => ({
                     ...prev,
-                    port: parseInt(e.target.value) || (formData.type === "mongodb" ? 27017 : 5432),
-                  }))
-                }
-                placeholder={formData.type === "mongodb" ? "27017" : "5432"}
+                    port: parseInt(e.target.value) || defaultPort,
+                  }));
+                }}
+                placeholder={String(dbTypes.find((t) => t.value === formData.type)?.port ?? 5432)}
               />
             </div>
+            )}
           </div>
 
           <div className="grid gap-1.5">
-            <Label htmlFor="database" className="text-xs">Database</Label>
+            <Label htmlFor="database" className="text-xs">{formData.type === "redis" ? "Database (0-15)" : "Database"}</Label>
             <Input
               id="database"
               className="h-8 text-sm"
@@ -193,11 +197,13 @@ export function ConnectionDialog({
               onChange={(e) =>
                 setFormData((prev) => ({ ...prev, database: e.target.value }))
               }
-              placeholder={formData.type === "mongodb" ? "mydb" : "myapp"}
+              placeholder={formData.type === "mongodb" ? "mydb" : formData.type === "redis" ? "0" : formData.type === "sqlite" ? "main" : "myapp"}
             />
           </div>
 
+          {formData.type !== "sqlite" && (
           <div className="grid grid-cols-2 gap-2">
+            {formData.type !== "redis" && (
             <div>
               <Label htmlFor="username" className="text-xs">Username</Label>
               <Input
@@ -207,9 +213,10 @@ export function ConnectionDialog({
                 onChange={(e) =>
                   setFormData((prev) => ({ ...prev, username: e.target.value }))
                 }
-                placeholder={formData.type === "mongodb" ? "admin" : "postgres"}
+                placeholder={formData.type === "mongodb" ? "admin" : formData.type === "mysql" ? "root" : "postgres"}
               />
             </div>
+            )}
             <div>
               <Label htmlFor="password" className="text-xs">Password</Label>
               <Input
@@ -224,6 +231,7 @@ export function ConnectionDialog({
               />
             </div>
           </div>
+          )}
 
           <div className="flex items-center space-x-2">
             <Switch
