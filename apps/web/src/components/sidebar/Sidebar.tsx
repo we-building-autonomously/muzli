@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Database, Loader2, ChevronRight, ChevronDown, Layers, FolderOpen } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { Plus, Database, Loader2, ChevronRight, ChevronDown, Layers, FolderOpen, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConnectionDialog } from "@/components/dialogs/ConnectionDialog";
 import { apiClient } from "@/api/client";
+import { getConnections, deleteConnection as removeConnection } from "@/lib/connections";
 import type { DatabaseConnection, TableData, VectorSearchContext } from "@/types";
 
 const DB_LABELS: Record<string, { label: string; color: string }> = {
@@ -30,7 +30,7 @@ interface PineconeIndexInfo {
 
 interface SidebarProps {
   selectedConnection: DatabaseConnection | null;
-  onConnectionSelect: (connection: DatabaseConnection) => void;
+  onConnectionSelect: (connection: DatabaseConnection | null) => void;
   onTableSelect: (data: TableData) => void;
   onVectorContextSelect?: (ctx: VectorSearchContext) => void;
   isLoading: boolean;
@@ -53,14 +53,18 @@ export function Sidebar({
   const [pineconeIndexes, setPineconeIndexes] = useState<Record<string, PineconeIndexInfo[]>>({});
   const [loadingIndexes, setLoadingIndexes] = useState<Set<string>>(new Set());
   const [selectedVectorCtx, setSelectedVectorCtx] = useState<string | null>(null);
+  const [connections, setConnections] = useState<DatabaseConnection[]>([]);
 
-  const { data: connections, refetch: refetchConnections } = useQuery({
-    queryKey: ["connections"],
-    queryFn: () => apiClient.getConnections(),
-  });
+  const refreshConnections = useCallback(() => {
+    setConnections(getConnections());
+  }, []);
 
   useEffect(() => {
-    if (!hasRestored && restoredConnectionId && connections?.length) {
+    refreshConnections();
+  }, [refreshConnections]);
+
+  useEffect(() => {
+    if (!hasRestored && restoredConnectionId && connections.length) {
       const match = connections.find((c) => c.id === restoredConnectionId);
       if (match) {
         onConnectionSelect(match);
@@ -70,8 +74,16 @@ export function Sidebar({
   }, [connections, restoredConnectionId, hasRestored, onConnectionSelect]);
 
   const handleConnectionCreated = () => {
-    refetchConnections();
+    refreshConnections();
     setIsDialogOpen(false);
+  };
+
+  const handleDeleteConnection = (connectionId: string) => {
+    removeConnection(connectionId);
+    refreshConnections();
+    if (selectedConnection?.id === connectionId) {
+      onConnectionSelect(null);
+    }
   };
 
   const isVectorDb = (type: string) => type === "pinecone" || type === "turbopuffer";
@@ -83,11 +95,11 @@ export function Sidebar({
     return `${conn.host}:${conn.port}/${conn.database}`;
   };
 
-  const loadPineconeIndexes = useCallback(async (connectionId: string) => {
-    if (loadingIndexes.has(connectionId)) return;
-    setLoadingIndexes((prev) => new Set(prev).add(connectionId));
+  const loadPineconeIndexes = useCallback(async (conn: DatabaseConnection) => {
+    if (loadingIndexes.has(conn.id)) return;
+    setLoadingIndexes((prev) => new Set(prev).add(conn.id));
     try {
-      const databases = await apiClient.getDatabases(connectionId);
+      const databases = await apiClient.getDatabases(conn);
       const indexes: PineconeIndexInfo[] = databases.map((db) => ({
         name: db.name,
         host: db.collation || "",
@@ -97,86 +109,84 @@ export function Sidebar({
         expanded: false,
         loading: false,
       }));
-      setPineconeIndexes((prev) => ({ ...prev, [connectionId]: indexes }));
+      setPineconeIndexes((prev) => ({ ...prev, [conn.id]: indexes }));
     } catch (err) {
       console.error("Failed to load indexes:", err);
     } finally {
       setLoadingIndexes((prev) => {
         const next = new Set(prev);
-        next.delete(connectionId);
+        next.delete(conn.id);
         return next;
       });
     }
   }, [loadingIndexes]);
 
-  const loadNamespaces = useCallback(async (connectionId: string, indexName: string, indexHost: string) => {
+  const loadNamespaces = useCallback(async (conn: DatabaseConnection, indexName: string, indexHost: string) => {
     setPineconeIndexes((prev) => {
-      const indexes = prev[connectionId]?.map((idx) =>
+      const indexes = prev[conn.id]?.map((idx) =>
         idx.name === indexName ? { ...idx, loading: true } : idx
       );
-      return { ...prev, [connectionId]: indexes || [] };
+      return { ...prev, [conn.id]: indexes || [] };
     });
 
     try {
-      // We need to temporarily update the connection host to this index's host
-      // to get namespaces. We'll use the schemas endpoint which returns namespaces for Pinecone.
-      const schemas = await apiClient.getSchemas(connectionId);
+      const schemas = await apiClient.getSchemas(conn);
       const namespaces = schemas.map((s) => s.name || "(default)");
 
       setPineconeIndexes((prev) => {
-        const indexes = prev[connectionId]?.map((idx) =>
+        const indexes = prev[conn.id]?.map((idx) =>
           idx.name === indexName
             ? { ...idx, namespaces, expanded: true, loading: false }
             : idx
         );
-        return { ...prev, [connectionId]: indexes || [] };
+        return { ...prev, [conn.id]: indexes || [] };
       });
     } catch (err) {
       console.error("Failed to load namespaces:", err);
       setPineconeIndexes((prev) => {
-        const indexes = prev[connectionId]?.map((idx) =>
+        const indexes = prev[conn.id]?.map((idx) =>
           idx.name === indexName
             ? { ...idx, namespaces: ["(default)"], expanded: true, loading: false }
             : idx
         );
-        return { ...prev, [connectionId]: indexes || [] };
+        return { ...prev, [conn.id]: indexes || [] };
       });
     }
   }, []);
 
-  const toggleConnection = (connId: string, connType: string) => {
+  const toggleConnection = (conn: DatabaseConnection) => {
     setExpandedConnections((prev) => {
       const next = new Set(prev);
-      if (next.has(connId)) {
-        next.delete(connId);
+      if (next.has(conn.id)) {
+        next.delete(conn.id);
       } else {
-        next.add(connId);
-        if (isVectorDb(connType) && !pineconeIndexes[connId]) {
-          loadPineconeIndexes(connId);
+        next.add(conn.id);
+        if (isVectorDb(conn.type) && !pineconeIndexes[conn.id]) {
+          loadPineconeIndexes(conn);
         }
       }
       return next;
     });
   };
 
-  const toggleIndex = (connectionId: string, indexName: string, indexHost: string) => {
-    const indexes = pineconeIndexes[connectionId];
+  const toggleIndex = (conn: DatabaseConnection, indexName: string, indexHost: string) => {
+    const indexes = pineconeIndexes[conn.id];
     const idx = indexes?.find((i) => i.name === indexName);
     if (idx?.expanded) {
       setPineconeIndexes((prev) => {
-        const updated = prev[connectionId]?.map((i) =>
+        const updated = prev[conn.id]?.map((i) =>
           i.name === indexName ? { ...i, expanded: false } : i
         );
-        return { ...prev, [connectionId]: updated || [] };
+        return { ...prev, [conn.id]: updated || [] };
       });
     } else if (!idx?.namespaces.length) {
-      loadNamespaces(connectionId, indexName, indexHost);
+      loadNamespaces(conn, indexName, indexHost);
     } else {
       setPineconeIndexes((prev) => {
-        const updated = prev[connectionId]?.map((i) =>
+        const updated = prev[conn.id]?.map((i) =>
           i.name === indexName ? { ...i, expanded: true } : i
         );
-        return { ...prev, [connectionId]: updated || [] };
+        return { ...prev, [conn.id]: updated || [] };
       });
     }
   };
@@ -220,7 +230,7 @@ export function Sidebar({
       </div>
 
       <div className="flex-1 overflow-auto p-1.5">
-        {connections?.map((connection) => {
+        {connections.map((connection) => {
           const db = DB_LABELS[connection.type] || DB_LABELS.postgres;
           const isExpanded = expandedConnections.has(connection.id);
           const isVector = isVectorDb(connection.type);
@@ -232,7 +242,7 @@ export function Sidebar({
               {/* Connection row */}
               <div
                 className={`
-                  p-2 rounded-md cursor-pointer transition-colors
+                  group p-2 rounded-md cursor-pointer transition-colors
                   ${
                     selectedConnection?.id === connection.id
                       ? "bg-accent text-accent-foreground"
@@ -242,7 +252,7 @@ export function Sidebar({
                 onClick={() => {
                   onConnectionSelect(connection);
                   if (isVector) {
-                    toggleConnection(connection.id, connection.type);
+                    toggleConnection(connection);
                   }
                 }}
               >
@@ -273,6 +283,15 @@ export function Sidebar({
                       </div>
                     )}
                   </div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteConnection(connection.id);
+                    }}
+                    className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-opacity"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
                   {isLoading && selectedConnection?.id === connection.id && (
                     <Loader2 className="h-3.5 w-3.5 animate-spin flex-shrink-0" />
                   )}
@@ -300,7 +319,7 @@ export function Sidebar({
                         `}
                         onClick={(e) => {
                           e.stopPropagation();
-                          toggleIndex(connection.id, idx.name, idx.host);
+                          toggleIndex(connection, idx.name, idx.host);
                           handleIndexClick(connection.id, idx);
                         }}
                       >
@@ -356,7 +375,7 @@ export function Sidebar({
           );
         })}
 
-        {!connections?.length && (
+        {!connections.length && (
           <div className="text-center py-6 text-muted-foreground">
             <Database className="h-6 w-6 mx-auto mb-1.5 opacity-50" />
             <p className="text-xs">No connections yet</p>

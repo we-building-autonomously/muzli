@@ -6,7 +6,7 @@ export interface DatabaseConnection {
   port: number;
   database: string;
   username: string;
-  password?: string;
+  password: string;
   ssl: boolean;
   createdAt: string;
   updatedAt: string;

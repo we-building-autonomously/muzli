@@ -112,12 +112,7 @@ type mongoQuery struct {
 	Update     bson.M        `json:"update"`
 }
 
-func (s *MongoService) ExecuteQuery(connectionID, query string, connectionService *ConnectionService) (*models.QueryResult, error) {
-	conn, err := connectionService.GetConnection(connectionID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get connection: %w", err)
-	}
-
+func (s *MongoService) ExecuteQuery(conn *models.Connection, query string) (*models.QueryResult, error) {
 	client, err := s.getClient(conn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to MongoDB: %w", err)
@@ -322,12 +317,7 @@ func (s *MongoService) executeCount(ctx context.Context, coll *mongo.Collection,
 	}, nil
 }
 
-func (s *MongoService) GetDatabases(connectionID string, connectionService *ConnectionService) ([]models.DatabaseInfo, error) {
-	conn, err := connectionService.GetConnection(connectionID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get connection: %w", err)
-	}
-
+func (s *MongoService) GetDatabases(conn *models.Connection) ([]models.DatabaseInfo, error) {
 	client, err := s.getClient(conn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to MongoDB: %w", err)
@@ -351,16 +341,11 @@ func (s *MongoService) GetDatabases(connectionID string, connectionService *Conn
 	return databases, nil
 }
 
-func (s *MongoService) GetSchemas(_ string, _ *ConnectionService) ([]models.SchemaInfo, error) {
+func (s *MongoService) GetSchemas(_ *models.Connection) ([]models.SchemaInfo, error) {
 	return []models.SchemaInfo{}, nil
 }
 
-func (s *MongoService) GetCollections(connectionID string, connectionService *ConnectionService) ([]models.TableInfo, error) {
-	conn, err := connectionService.GetConnection(connectionID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get connection: %w", err)
-	}
-
+func (s *MongoService) GetCollections(conn *models.Connection) ([]models.TableInfo, error) {
 	client, err := s.getClient(conn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to MongoDB: %w", err)
@@ -387,12 +372,7 @@ func (s *MongoService) GetCollections(connectionID string, connectionService *Co
 	return tables, nil
 }
 
-func (s *MongoService) GetColumns(connectionID, collection string, connectionService *ConnectionService) ([]models.ColumnInfo, error) {
-	conn, err := connectionService.GetConnection(connectionID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get connection: %w", err)
-	}
-
+func (s *MongoService) GetColumns(conn *models.Connection, collection string) ([]models.ColumnInfo, error) {
 	client, err := s.getClient(conn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to MongoDB: %w", err)
@@ -441,12 +421,7 @@ func (s *MongoService) GetColumns(connectionID, collection string, connectionSer
 	return columns, nil
 }
 
-func (s *MongoService) GetTableData(req models.TableDataRequest, connectionService *ConnectionService) (*models.TableDataResponse, error) {
-	conn, err := connectionService.GetConnection(req.ConnectionID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get connection: %w", err)
-	}
-
+func (s *MongoService) GetTableData(conn *models.Connection, req models.TableDataRequest) (*models.TableDataResponse, error) {
 	client, err := s.getClient(conn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to MongoDB: %w", err)
@@ -496,7 +471,7 @@ func (s *MongoService) GetTableData(req models.TableDataRequest, connectionServi
 		return nil, fmt.Errorf("failed to decode documents: %w", err)
 	}
 
-	columns, _ := s.GetColumns(req.ConnectionID, req.Table, connectionService)
+	columns, _ := s.GetColumns(conn, req.Table)
 
 	rows := make([]models.RowResult, len(docs))
 	for i, doc := range docs {

@@ -169,11 +169,7 @@ func (s *PineconeService) TestConnection(req models.TestConnectionRequest) (*mod
 	}, nil
 }
 
-func (s *PineconeService) ExecuteQuery(connectionID, query string, connectionService *ConnectionService) (*models.QueryResult, error) {
-	conn, err := connectionService.GetConnection(connectionID)
-	if err != nil {
-		return nil, err
-	}
+func (s *PineconeService) ExecuteQuery(conn *models.Connection, query string) (*models.QueryResult, error) {
 	client := s.getClient(conn)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -205,6 +201,7 @@ func (s *PineconeService) ExecuteQuery(connectionID, query string, connectionSer
 	}
 
 	var result map[string]interface{}
+	var err error
 
 	switch operation {
 	case "list_indexes":
@@ -362,11 +359,7 @@ func (s *PineconeService) ExecuteQuery(connectionID, query string, connectionSer
 	}, nil
 }
 
-func (s *PineconeService) GetDatabases(connectionID string, connectionService *ConnectionService) ([]models.DatabaseInfo, error) {
-	conn, err := connectionService.GetConnection(connectionID)
-	if err != nil {
-		return nil, err
-	}
+func (s *PineconeService) GetDatabases(conn *models.Connection) ([]models.DatabaseInfo, error) {
 	client := s.getClient(conn)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -385,9 +378,9 @@ func (s *PineconeService) GetDatabases(connectionID string, connectionService *C
 			host, _ := index["host"].(string)
 			metric, _ := index["metric"].(string)
 			databases = append(databases, models.DatabaseInfo{
-				Name:  name,
-				Owner: "pinecone",
-				Encoding: metric,
+				Name:      name,
+				Owner:     "pinecone",
+				Encoding:  metric,
 				Collation: host,
 			})
 		}
@@ -402,18 +395,13 @@ func (s *PineconeService) getIndexStats(conn *models.Connection) (map[string]int
 
 	host := client.host
 	if host == "" || host == pineconeControlPlane {
-		return nil, fmt.Errorf("no index host configured — select a specific index")
+		return nil, fmt.Errorf("no index host configured -- select a specific index")
 	}
 
 	return client.dataPlane(ctx, host, "POST", "/describe_index_stats", map[string]interface{}{})
 }
 
-func (s *PineconeService) GetSchemas(connectionID string, connectionService *ConnectionService) ([]models.SchemaInfo, error) {
-	conn, err := connectionService.GetConnection(connectionID)
-	if err != nil {
-		return nil, err
-	}
-
+func (s *PineconeService) GetSchemas(conn *models.Connection) ([]models.SchemaInfo, error) {
 	stats, err := s.getIndexStats(conn)
 	if err != nil {
 		return []models.SchemaInfo{{Name: "", Owner: "default"}}, nil
@@ -430,12 +418,7 @@ func (s *PineconeService) GetSchemas(connectionID string, connectionService *Con
 	return schemas, nil
 }
 
-func (s *PineconeService) GetTables(connectionID, schema string, connectionService *ConnectionService) ([]models.TableInfo, error) {
-	conn, err := connectionService.GetConnection(connectionID)
-	if err != nil {
-		return nil, err
-	}
-
+func (s *PineconeService) GetTables(conn *models.Connection, _ string) ([]models.TableInfo, error) {
 	stats, err := s.getIndexStats(conn)
 	if err != nil {
 		return []models.TableInfo{{Name: "(default)", Schema: "vectors", Type: "namespace"}}, nil
@@ -465,7 +448,7 @@ func (s *PineconeService) GetTables(connectionID, schema string, connectionServi
 	return tables, nil
 }
 
-func (s *PineconeService) GetColumns(_ string, _ string, _ string, _ *ConnectionService) ([]models.ColumnInfo, error) {
+func (s *PineconeService) GetColumns(_ *models.Connection, _, _ string) ([]models.ColumnInfo, error) {
 	return []models.ColumnInfo{
 		{Name: "id", DataType: "string", IsPrimaryKey: true},
 		{Name: "values", DataType: "vector"},
@@ -474,16 +457,12 @@ func (s *PineconeService) GetColumns(_ string, _ string, _ string, _ *Connection
 	}, nil
 }
 
-func (s *PineconeService) GetTableData(req models.TableDataRequest, connectionService *ConnectionService) (*models.TableDataResponse, error) {
-	conn, err := connectionService.GetConnection(req.ConnectionID)
-	if err != nil {
-		return nil, err
-	}
+func (s *PineconeService) GetTableData(conn *models.Connection, req models.TableDataRequest) (*models.TableDataResponse, error) {
 	client := s.getClient(conn)
 
 	host := client.host
 	if host == "" || host == pineconeControlPlane {
-		return nil, fmt.Errorf("no index host configured — set index host in connection")
+		return nil, fmt.Errorf("no index host configured -- set index host in connection")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

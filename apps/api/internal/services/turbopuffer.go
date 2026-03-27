@@ -105,11 +105,7 @@ func (s *TurbopufferService) TestConnection(req models.TestConnectionRequest) (*
 	}, nil
 }
 
-func (s *TurbopufferService) ExecuteQuery(connectionID, query string, connectionService *ConnectionService) (*models.QueryResult, error) {
-	conn, err := connectionService.GetConnection(connectionID)
-	if err != nil {
-		return nil, err
-	}
+func (s *TurbopufferService) ExecuteQuery(conn *models.Connection, query string) (*models.QueryResult, error) {
 	client := s.getClient(conn)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -128,6 +124,7 @@ func (s *TurbopufferService) ExecuteQuery(connectionID, query string, connection
 	}
 
 	var respBody json.RawMessage
+	var err error
 
 	// Handle list_namespaces before namespace resolution
 	if operation == "list_namespaces" {
@@ -294,11 +291,7 @@ func (s *TurbopufferService) ExecuteQuery(connectionID, query string, connection
 	}, nil
 }
 
-func (s *TurbopufferService) GetDatabases(connectionID string, connectionService *ConnectionService) ([]models.DatabaseInfo, error) {
-	conn, err := connectionService.GetConnection(connectionID)
-	if err != nil {
-		return nil, err
-	}
+func (s *TurbopufferService) GetDatabases(conn *models.Connection) ([]models.DatabaseInfo, error) {
 	client := s.getClient(conn)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -330,12 +323,12 @@ func (s *TurbopufferService) GetDatabases(connectionID string, connectionService
 	return dbs, nil
 }
 
-func (s *TurbopufferService) GetSchemas(_ string, _ *ConnectionService) ([]models.SchemaInfo, error) {
+func (s *TurbopufferService) GetSchemas(_ *models.Connection) ([]models.SchemaInfo, error) {
 	return []models.SchemaInfo{{Name: "default"}}, nil
 }
 
-func (s *TurbopufferService) GetTables(connectionID, _ string, connectionService *ConnectionService) ([]models.TableInfo, error) {
-	dbs, err := s.GetDatabases(connectionID, connectionService)
+func (s *TurbopufferService) GetTables(conn *models.Connection, _ string) ([]models.TableInfo, error) {
+	dbs, err := s.GetDatabases(conn)
 	if err != nil {
 		return nil, err
 	}
@@ -348,7 +341,7 @@ func (s *TurbopufferService) GetTables(connectionID, _ string, connectionService
 	return tables, nil
 }
 
-func (s *TurbopufferService) GetColumns(_ string, _ string, _ string, _ *ConnectionService) ([]models.ColumnInfo, error) {
+func (s *TurbopufferService) GetColumns(_ *models.Connection, _, _ string) ([]models.ColumnInfo, error) {
 	return []models.ColumnInfo{
 		{Name: "id", DataType: "string/int", IsPrimaryKey: true},
 		{Name: "vector", DataType: "float[]"},
@@ -356,11 +349,7 @@ func (s *TurbopufferService) GetColumns(_ string, _ string, _ string, _ *Connect
 	}, nil
 }
 
-func (s *TurbopufferService) GetTableData(req models.TableDataRequest, connectionService *ConnectionService) (*models.TableDataResponse, error) {
-	conn, err := connectionService.GetConnection(req.ConnectionID)
-	if err != nil {
-		return nil, err
-	}
+func (s *TurbopufferService) GetTableData(conn *models.Connection, req models.TableDataRequest) (*models.TableDataResponse, error) {
 	client := s.getClient(conn)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

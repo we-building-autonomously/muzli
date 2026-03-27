@@ -102,11 +102,7 @@ func (s *RedisService) TestConnection(req models.TestConnectionRequest) (*models
 	}, nil
 }
 
-func (s *RedisService) ExecuteQuery(connectionID, query string, connectionService *ConnectionService) (*models.QueryResult, error) {
-	conn, err := connectionService.GetConnection(connectionID)
-	if err != nil {
-		return nil, err
-	}
+func (s *RedisService) ExecuteQuery(conn *models.Connection, query string) (*models.QueryResult, error) {
 	client, err := s.getClient(conn)
 	if err != nil {
 		return nil, err
@@ -170,7 +166,7 @@ func resultToRows(result interface{}) []models.RowResult {
 	}
 }
 
-func (s *RedisService) GetDatabases(_ string, _ *ConnectionService) ([]models.DatabaseInfo, error) {
+func (s *RedisService) GetDatabases(_ *models.Connection) ([]models.DatabaseInfo, error) {
 	dbs := make([]models.DatabaseInfo, 16)
 	for i := 0; i < 16; i++ {
 		dbs[i] = models.DatabaseInfo{Name: fmt.Sprintf("db%d", i)}
@@ -178,15 +174,11 @@ func (s *RedisService) GetDatabases(_ string, _ *ConnectionService) ([]models.Da
 	return dbs, nil
 }
 
-func (s *RedisService) GetSchemas(_ string, _ *ConnectionService) ([]models.SchemaInfo, error) {
+func (s *RedisService) GetSchemas(_ *models.Connection) ([]models.SchemaInfo, error) {
 	return []models.SchemaInfo{{Name: "default"}}, nil
 }
 
-func (s *RedisService) GetTables(connectionID, _ string, connectionService *ConnectionService) ([]models.TableInfo, error) {
-	conn, err := connectionService.GetConnection(connectionID)
-	if err != nil {
-		return nil, err
-	}
+func (s *RedisService) GetTables(conn *models.Connection, _ string) ([]models.TableInfo, error) {
 	client, err := s.getClient(conn)
 	if err != nil {
 		return nil, err
@@ -231,7 +223,7 @@ func (s *RedisService) GetTables(connectionID, _ string, connectionService *Conn
 	return tables, nil
 }
 
-func (s *RedisService) GetColumns(connectionID, _, table string, connectionService *ConnectionService) ([]models.ColumnInfo, error) {
+func (s *RedisService) GetColumns(_ *models.Connection, _, _ string) ([]models.ColumnInfo, error) {
 	return []models.ColumnInfo{
 		{Name: "key", DataType: "string", IsNullable: false, IsPrimaryKey: true},
 		{Name: "type", DataType: "string", IsNullable: false},
@@ -240,11 +232,7 @@ func (s *RedisService) GetColumns(connectionID, _, table string, connectionServi
 	}, nil
 }
 
-func (s *RedisService) GetTableData(req models.TableDataRequest, connectionService *ConnectionService) (*models.TableDataResponse, error) {
-	conn, err := connectionService.GetConnection(req.ConnectionID)
-	if err != nil {
-		return nil, err
-	}
+func (s *RedisService) GetTableData(conn *models.Connection, req models.TableDataRequest) (*models.TableDataResponse, error) {
 	client, err := s.getClient(conn)
 	if err != nil {
 		return nil, err

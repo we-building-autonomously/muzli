@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Loader2, CheckCircle, XCircle, Database, Globe, Key, Server, HardDrive, Folder } from "lucide-react";
+import { Loader2, CheckCircle, XCircle } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { apiClient } from "@/api/client";
+import { saveConnection } from "@/lib/connections";
 import type { CreateConnectionData } from "@/types";
 
 interface ConnectionDialogProps {
@@ -199,31 +200,25 @@ export function ConnectionDialog({
     },
   });
 
-  const createMutation = useMutation({
-    mutationFn: () => apiClient.createConnection(formData),
-    onSuccess: () => {
-      onConnectionCreated();
-      setFormData({
-        name: "",
-        type: "postgres",
-        host: "localhost",
-        port: 5432,
-        database: "",
-        username: "",
-        password: "",
-        ssl: false,
-      });
-      setTestResult({ status: null, message: "" });
-    },
-  });
-
   const handleTest = () => {
     setTestResult({ status: null, message: "" });
     testMutation.mutate();
   };
 
   const handleCreate = () => {
-    createMutation.mutate();
+    saveConnection(formData);
+    onConnectionCreated();
+    setFormData({
+      name: "",
+      type: "postgres",
+      host: "localhost",
+      port: 5432,
+      database: "",
+      username: "",
+      password: "",
+      ssl: false,
+    });
+    setTestResult({ status: null, message: "" });
   };
 
   const isVectorDb = formData.type === "pinecone" || formData.type === "turbopuffer";
@@ -394,7 +389,7 @@ export function ConnectionDialog({
               {testMutation.isPending ? (
                 <>
                   <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                  Testing…
+                  Testing...
                 </>
               ) : (
                 "Test"
@@ -416,18 +411,10 @@ export function ConnectionDialog({
                 onClick={handleCreate}
                 disabled={
                   !isFormValid ||
-                  createMutation.isPending ||
                   testResult.status !== "success"
                 }
               >
-                {createMutation.isPending ? (
-                  <>
-                    <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                    Creating…
-                  </>
-                ) : (
-                  "Connect"
-                )}
+                Connect
               </Button>
             </div>
           </div>

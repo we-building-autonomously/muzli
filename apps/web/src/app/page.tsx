@@ -27,15 +27,19 @@ function MuzliApp() {
     } catch {}
   }, []);
 
-  const handleConnectionSelect = (connection: DatabaseConnection) => {
+  const handleConnectionSelect = (connection: DatabaseConnection | null) => {
     setSelectedConnection(connection);
     setQueryResult(null);
     setTableData(null);
-    if (connection.type !== "pinecone" && connection.type !== "turbopuffer") {
+    if (!connection || (connection.type !== "pinecone" && connection.type !== "turbopuffer")) {
       setVectorContext(null);
     }
     try {
-      localStorage.setItem(STORAGE_KEY, connection.id);
+      if (connection) {
+        localStorage.setItem(STORAGE_KEY, connection.id);
+      } else {
+        localStorage.removeItem(STORAGE_KEY);
+      }
     } catch {}
   };
 

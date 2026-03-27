@@ -75,11 +75,7 @@ func (s *SQLiteService) TestConnection(req models.TestConnectionRequest) (*model
 	}, nil
 }
 
-func (s *SQLiteService) ExecuteQuery(connectionID, query string, connectionService *ConnectionService) (*models.QueryResult, error) {
-	conn, err := connectionService.GetConnection(connectionID)
-	if err != nil {
-		return nil, err
-	}
+func (s *SQLiteService) ExecuteQuery(conn *models.Connection, query string) (*models.QueryResult, error) {
 	db, err := s.getDB(conn)
 	if err != nil {
 		return nil, err
@@ -150,19 +146,15 @@ func (s *SQLiteService) ExecuteQuery(connectionID, query string, connectionServi
 	}, nil
 }
 
-func (s *SQLiteService) GetDatabases(_ string, _ *ConnectionService) ([]models.DatabaseInfo, error) {
+func (s *SQLiteService) GetDatabases(_ *models.Connection) ([]models.DatabaseInfo, error) {
 	return []models.DatabaseInfo{{Name: "main"}}, nil
 }
 
-func (s *SQLiteService) GetSchemas(_ string, _ *ConnectionService) ([]models.SchemaInfo, error) {
+func (s *SQLiteService) GetSchemas(_ *models.Connection) ([]models.SchemaInfo, error) {
 	return []models.SchemaInfo{{Name: "main"}}, nil
 }
 
-func (s *SQLiteService) GetTables(connectionID, _ string, connectionService *ConnectionService) ([]models.TableInfo, error) {
-	conn, err := connectionService.GetConnection(connectionID)
-	if err != nil {
-		return nil, err
-	}
+func (s *SQLiteService) GetTables(conn *models.Connection, _ string) ([]models.TableInfo, error) {
 	db, err := s.getDB(conn)
 	if err != nil {
 		return nil, err
@@ -186,11 +178,7 @@ func (s *SQLiteService) GetTables(connectionID, _ string, connectionService *Con
 	return tables, nil
 }
 
-func (s *SQLiteService) GetColumns(connectionID, _, table string, connectionService *ConnectionService) ([]models.ColumnInfo, error) {
-	conn, err := connectionService.GetConnection(connectionID)
-	if err != nil {
-		return nil, err
-	}
+func (s *SQLiteService) GetColumns(conn *models.Connection, _, table string) ([]models.ColumnInfo, error) {
 	db, err := s.getDB(conn)
 	if err != nil {
 		return nil, err
@@ -219,17 +207,13 @@ func (s *SQLiteService) GetColumns(connectionID, _, table string, connectionServ
 	return columns, nil
 }
 
-func (s *SQLiteService) GetTableData(req models.TableDataRequest, connectionService *ConnectionService) (*models.TableDataResponse, error) {
-	conn, err := connectionService.GetConnection(req.ConnectionID)
-	if err != nil {
-		return nil, err
-	}
+func (s *SQLiteService) GetTableData(conn *models.Connection, req models.TableDataRequest) (*models.TableDataResponse, error) {
 	db, err := s.getDB(conn)
 	if err != nil {
 		return nil, err
 	}
 
-	columns, err := s.GetColumns(req.ConnectionID, req.Schema, req.Table, connectionService)
+	columns, err := s.GetColumns(conn, req.Schema, req.Table)
 	if err != nil {
 		return nil, err
 	}

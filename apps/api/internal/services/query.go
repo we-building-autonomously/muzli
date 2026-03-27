@@ -120,25 +120,20 @@ func (s *QueryService) TestConnection(req models.TestConnectionRequest) (*models
 	}, nil
 }
 
-func (s *QueryService) ExecuteQuery(connectionID string, query string, connectionService *ConnectionService) (*models.QueryResult, error) {
-	conn, err := connectionService.GetConnection(connectionID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get connection: %w", err)
-	}
-
+func (s *QueryService) ExecuteQuery(conn *models.Connection, query string) (*models.QueryResult, error) {
 	switch conn.Type {
 	case "mongodb":
-		return s.mongoService.ExecuteQuery(connectionID, query, connectionService)
+		return s.mongoService.ExecuteQuery(conn, query)
 	case "mysql":
-		return s.mysqlService.ExecuteQuery(connectionID, query, connectionService)
+		return s.mysqlService.ExecuteQuery(conn, query)
 	case "sqlite":
-		return s.sqliteService.ExecuteQuery(connectionID, query, connectionService)
+		return s.sqliteService.ExecuteQuery(conn, query)
 	case "redis":
-		return s.redisService.ExecuteQuery(connectionID, query, connectionService)
+		return s.redisService.ExecuteQuery(conn, query)
 	case "pinecone":
-		return s.pineconeService.ExecuteQuery(connectionID, query, connectionService)
+		return s.pineconeService.ExecuteQuery(conn, query)
 	case "turbopuffer":
-		return s.turbopufferService.ExecuteQuery(connectionID, query, connectionService)
+		return s.turbopufferService.ExecuteQuery(conn, query)
 	}
 
 	pool, err := s.getConnection(conn)
@@ -227,25 +222,20 @@ func (s *QueryService) executeNonSelectQuery(ctx context.Context, pool *pgxpool.
 	}, nil
 }
 
-func (s *QueryService) GetDatabases(connectionID string, connectionService *ConnectionService) ([]models.DatabaseInfo, error) {
-	conn, err := connectionService.GetConnection(connectionID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get connection: %w", err)
-	}
-
+func (s *QueryService) GetDatabases(conn *models.Connection) ([]models.DatabaseInfo, error) {
 	switch conn.Type {
 	case "mongodb":
-		return s.mongoService.GetDatabases(connectionID, connectionService)
+		return s.mongoService.GetDatabases(conn)
 	case "mysql":
-		return s.mysqlService.GetDatabases(connectionID, connectionService)
+		return s.mysqlService.GetDatabases(conn)
 	case "sqlite":
-		return s.sqliteService.GetDatabases(connectionID, connectionService)
+		return s.sqliteService.GetDatabases(conn)
 	case "redis":
-		return s.redisService.GetDatabases(connectionID, connectionService)
+		return s.redisService.GetDatabases(conn)
 	case "pinecone":
-		return s.pineconeService.GetDatabases(connectionID, connectionService)
+		return s.pineconeService.GetDatabases(conn)
 	case "turbopuffer":
-		return s.turbopufferService.GetDatabases(connectionID, connectionService)
+		return s.turbopufferService.GetDatabases(conn)
 	}
 
 	pool, err := s.getConnection(conn)
@@ -257,10 +247,10 @@ func (s *QueryService) GetDatabases(connectionID string, connectionService *Conn
 	defer cancel()
 
 	query := `
-		SELECT datname, pg_catalog.pg_get_userbyid(datdba) as owner, 
+		SELECT datname, pg_catalog.pg_get_userbyid(datdba) as owner,
 			   pg_encoding_to_char(encoding) as encoding,
 			   datcollate, datctype
-		FROM pg_database 
+		FROM pg_database
 		WHERE datistemplate = false
 		ORDER BY datname
 	`
@@ -284,25 +274,20 @@ func (s *QueryService) GetDatabases(connectionID string, connectionService *Conn
 	return databases, nil
 }
 
-func (s *QueryService) GetSchemas(connectionID string, connectionService *ConnectionService) ([]models.SchemaInfo, error) {
-	conn, err := connectionService.GetConnection(connectionID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get connection: %w", err)
-	}
-
+func (s *QueryService) GetSchemas(conn *models.Connection) ([]models.SchemaInfo, error) {
 	switch conn.Type {
 	case "mongodb":
-		return s.mongoService.GetSchemas(connectionID, connectionService)
+		return s.mongoService.GetSchemas(conn)
 	case "mysql":
-		return s.mysqlService.GetSchemas(connectionID, connectionService)
+		return s.mysqlService.GetSchemas(conn)
 	case "sqlite":
-		return s.sqliteService.GetSchemas(connectionID, connectionService)
+		return s.sqliteService.GetSchemas(conn)
 	case "redis":
-		return s.redisService.GetSchemas(connectionID, connectionService)
+		return s.redisService.GetSchemas(conn)
 	case "pinecone":
-		return s.pineconeService.GetSchemas(connectionID, connectionService)
+		return s.pineconeService.GetSchemas(conn)
 	case "turbopuffer":
-		return s.turbopufferService.GetSchemas(connectionID, connectionService)
+		return s.turbopufferService.GetSchemas(conn)
 	}
 
 	pool, err := s.getConnection(conn)
@@ -339,25 +324,20 @@ func (s *QueryService) GetSchemas(connectionID string, connectionService *Connec
 	return schemas, nil
 }
 
-func (s *QueryService) GetTables(connectionID, schema string, connectionService *ConnectionService) ([]models.TableInfo, error) {
-	conn, err := connectionService.GetConnection(connectionID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get connection: %w", err)
-	}
-
+func (s *QueryService) GetTables(conn *models.Connection, schema string) ([]models.TableInfo, error) {
 	switch conn.Type {
 	case "mongodb":
-		return s.mongoService.GetCollections(connectionID, connectionService)
+		return s.mongoService.GetCollections(conn)
 	case "mysql":
-		return s.mysqlService.GetTables(connectionID, schema, connectionService)
+		return s.mysqlService.GetTables(conn, schema)
 	case "sqlite":
-		return s.sqliteService.GetTables(connectionID, schema, connectionService)
+		return s.sqliteService.GetTables(conn, schema)
 	case "redis":
-		return s.redisService.GetTables(connectionID, schema, connectionService)
+		return s.redisService.GetTables(conn, schema)
 	case "pinecone":
-		return s.pineconeService.GetTables(connectionID, schema, connectionService)
+		return s.pineconeService.GetTables(conn, schema)
 	case "turbopuffer":
-		return s.turbopufferService.GetTables(connectionID, schema, connectionService)
+		return s.turbopufferService.GetTables(conn, schema)
 	}
 
 	pool, err := s.getConnection(conn)
@@ -369,7 +349,7 @@ func (s *QueryService) GetTables(connectionID, schema string, connectionService 
 	defer cancel()
 
 	query := `
-		SELECT table_name, table_schema, table_type, 
+		SELECT table_name, table_schema, table_type,
 			   COALESCE(pg_catalog.pg_get_userbyid(c.relowner), '') as owner
 		FROM information_schema.tables t
 		LEFT JOIN pg_catalog.pg_class c ON c.relname = t.table_name
@@ -407,25 +387,20 @@ func (s *QueryService) GetTables(connectionID, schema string, connectionService 
 	return tables, nil
 }
 
-func (s *QueryService) GetColumns(connectionID, schema, table string, connectionService *ConnectionService) ([]models.ColumnInfo, error) {
-	conn, err := connectionService.GetConnection(connectionID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get connection: %w", err)
-	}
-
+func (s *QueryService) GetColumns(conn *models.Connection, schema, table string) ([]models.ColumnInfo, error) {
 	switch conn.Type {
 	case "mongodb":
-		return s.mongoService.GetColumns(connectionID, table, connectionService)
+		return s.mongoService.GetColumns(conn, table)
 	case "mysql":
-		return s.mysqlService.GetColumns(connectionID, schema, table, connectionService)
+		return s.mysqlService.GetColumns(conn, schema, table)
 	case "sqlite":
-		return s.sqliteService.GetColumns(connectionID, schema, table, connectionService)
+		return s.sqliteService.GetColumns(conn, schema, table)
 	case "redis":
-		return s.redisService.GetColumns(connectionID, schema, table, connectionService)
+		return s.redisService.GetColumns(conn, schema, table)
 	case "pinecone":
-		return s.pineconeService.GetColumns(connectionID, schema, table, connectionService)
+		return s.pineconeService.GetColumns(conn, schema, table)
 	case "turbopuffer":
-		return s.turbopufferService.GetColumns(connectionID, schema, table, connectionService)
+		return s.turbopufferService.GetColumns(conn, schema, table)
 	}
 
 	pool, err := s.getConnection(conn)
@@ -437,7 +412,7 @@ func (s *QueryService) GetColumns(connectionID, schema, table string, connection
 	defer cancel()
 
 	query := `
-		SELECT 
+		SELECT
 			c.column_name,
 			c.data_type,
 			c.is_nullable = 'YES' as is_nullable,
@@ -486,25 +461,22 @@ func (s *QueryService) GetColumns(connectionID, schema, table string, connection
 	return columns, nil
 }
 
-func (s *QueryService) GetTableData(req models.TableDataRequest, connectionService *ConnectionService) (*models.TableDataResponse, error) {
-	conn, err := connectionService.GetConnection(req.ConnectionID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get connection: %w", err)
-	}
+func (s *QueryService) GetTableData(req models.TableDataRequest) (*models.TableDataResponse, error) {
+	conn := req.Connection.ToConnection()
 
 	switch conn.Type {
 	case "mongodb":
-		return s.mongoService.GetTableData(req, connectionService)
+		return s.mongoService.GetTableData(conn, req)
 	case "mysql":
-		return s.mysqlService.GetTableData(req, connectionService)
+		return s.mysqlService.GetTableData(conn, req)
 	case "sqlite":
-		return s.sqliteService.GetTableData(req, connectionService)
+		return s.sqliteService.GetTableData(conn, req)
 	case "redis":
-		return s.redisService.GetTableData(req, connectionService)
+		return s.redisService.GetTableData(conn, req)
 	case "pinecone":
-		return s.pineconeService.GetTableData(req, connectionService)
+		return s.pineconeService.GetTableData(conn, req)
 	case "turbopuffer":
-		return s.turbopufferService.GetTableData(req, connectionService)
+		return s.turbopufferService.GetTableData(conn, req)
 	}
 
 	pool, err := s.getConnection(conn)
@@ -516,7 +488,7 @@ func (s *QueryService) GetTableData(req models.TableDataRequest, connectionServi
 	defer cancel()
 
 	// Get column information
-	columns, err := s.GetColumns(req.ConnectionID, req.Schema, req.Table, connectionService)
+	columns, err := s.GetColumns(conn, req.Schema, req.Table)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get columns: %w", err)
 	}

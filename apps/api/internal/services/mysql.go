@@ -84,12 +84,7 @@ func (s *MySQLService) TestConnection(req models.TestConnectionRequest) (*models
 	}, nil
 }
 
-func (s *MySQLService) ExecuteQuery(connectionID, query string, connectionService *ConnectionService) (*models.QueryResult, error) {
-	conn, err := connectionService.GetConnection(connectionID)
-	if err != nil {
-		return nil, err
-	}
-
+func (s *MySQLService) ExecuteQuery(conn *models.Connection, query string) (*models.QueryResult, error) {
 	db, err := s.getDB(conn)
 	if err != nil {
 		return nil, err
@@ -165,11 +160,7 @@ func (s *MySQLService) ExecuteQuery(connectionID, query string, connectionServic
 	}, nil
 }
 
-func (s *MySQLService) GetDatabases(connectionID string, connectionService *ConnectionService) ([]models.DatabaseInfo, error) {
-	conn, err := connectionService.GetConnection(connectionID)
-	if err != nil {
-		return nil, err
-	}
+func (s *MySQLService) GetDatabases(conn *models.Connection) ([]models.DatabaseInfo, error) {
 	db, err := s.getDB(conn)
 	if err != nil {
 		return nil, err
@@ -192,9 +183,9 @@ func (s *MySQLService) GetDatabases(connectionID string, connectionService *Conn
 	return databases, nil
 }
 
-func (s *MySQLService) GetSchemas(connectionID string, connectionService *ConnectionService) ([]models.SchemaInfo, error) {
+func (s *MySQLService) GetSchemas(conn *models.Connection) ([]models.SchemaInfo, error) {
 	// MySQL databases are schemas
-	dbs, err := s.GetDatabases(connectionID, connectionService)
+	dbs, err := s.GetDatabases(conn)
 	if err != nil {
 		return nil, err
 	}
@@ -205,17 +196,13 @@ func (s *MySQLService) GetSchemas(connectionID string, connectionService *Connec
 	return schemas, nil
 }
 
-func (s *MySQLService) GetTables(connectionID, schema string, connectionService *ConnectionService) ([]models.TableInfo, error) {
-	conn, err := connectionService.GetConnection(connectionID)
-	if err != nil {
-		return nil, err
-	}
+func (s *MySQLService) GetTables(conn *models.Connection, schema string) ([]models.TableInfo, error) {
 	db, err := s.getDB(conn)
 	if err != nil {
 		return nil, err
 	}
 
-	query := `SELECT TABLE_NAME, TABLE_SCHEMA, TABLE_TYPE 
+	query := `SELECT TABLE_NAME, TABLE_SCHEMA, TABLE_TYPE
 		FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? ORDER BY TABLE_NAME`
 
 	rows, err := db.Query(query, schema)
@@ -244,17 +231,13 @@ func (s *MySQLService) GetTables(connectionID, schema string, connectionService 
 	return tables, nil
 }
 
-func (s *MySQLService) GetColumns(connectionID, schema, table string, connectionService *ConnectionService) ([]models.ColumnInfo, error) {
-	conn, err := connectionService.GetConnection(connectionID)
-	if err != nil {
-		return nil, err
-	}
+func (s *MySQLService) GetColumns(conn *models.Connection, schema, table string) ([]models.ColumnInfo, error) {
 	db, err := s.getDB(conn)
 	if err != nil {
 		return nil, err
 	}
 
-	query := `SELECT 
+	query := `SELECT
 		c.COLUMN_NAME, c.DATA_TYPE, c.IS_NULLABLE = 'YES', c.COLUMN_DEFAULT,
 		c.CHARACTER_MAXIMUM_LENGTH, c.NUMERIC_PRECISION, c.NUMERIC_SCALE, c.COLUMN_KEY
 		FROM information_schema.COLUMNS c
@@ -282,17 +265,13 @@ func (s *MySQLService) GetColumns(connectionID, schema, table string, connection
 	return columns, nil
 }
 
-func (s *MySQLService) GetTableData(req models.TableDataRequest, connectionService *ConnectionService) (*models.TableDataResponse, error) {
-	conn, err := connectionService.GetConnection(req.ConnectionID)
-	if err != nil {
-		return nil, err
-	}
+func (s *MySQLService) GetTableData(conn *models.Connection, req models.TableDataRequest) (*models.TableDataResponse, error) {
 	db, err := s.getDB(conn)
 	if err != nil {
 		return nil, err
 	}
 
-	columns, err := s.GetColumns(req.ConnectionID, req.Schema, req.Table, connectionService)
+	columns, err := s.GetColumns(conn, req.Schema, req.Table)
 	if err != nil {
 		return nil, err
 	}

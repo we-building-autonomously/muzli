@@ -1,6 +1,5 @@
 import type {
   DatabaseConnection,
-  CreateConnectionData,
   TestConnectionData,
   TestConnectionResult,
   DatabaseInfo,
@@ -10,6 +9,28 @@ import type {
   QueryResult,
   TableData,
 } from "@/types";
+
+type ConnectionDetails = {
+  type: string;
+  host: string;
+  port: number;
+  database: string;
+  username: string;
+  password: string;
+  ssl: boolean;
+};
+
+function toConnectionDetails(conn: DatabaseConnection): ConnectionDetails {
+  return {
+    type: conn.type,
+    host: conn.host,
+    port: conn.port,
+    database: conn.database,
+    username: conn.username,
+    password: conn.password || "",
+    ssl: conn.ssl,
+  };
+}
 
 const API_BASE_URL =
   (process.env.NEXT_PUBLIC_API_URL || "") + "/api/v1";
@@ -39,39 +60,6 @@ class ApiClient {
     return response.json();
   }
 
-  async getConnections(): Promise<DatabaseConnection[]> {
-    return this.request("/connections");
-  }
-
-  async createConnection(
-    data: CreateConnectionData
-  ): Promise<DatabaseConnection> {
-    return this.request("/connections", {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
-  }
-
-  async getConnection(id: string): Promise<DatabaseConnection> {
-    return this.request(`/connections/${id}`);
-  }
-
-  async updateConnection(
-    id: string,
-    data: Partial<CreateConnectionData>
-  ): Promise<DatabaseConnection> {
-    return this.request(`/connections/${id}`, {
-      method: "PUT",
-      body: JSON.stringify(data),
-    });
-  }
-
-  async deleteConnection(id: string): Promise<void> {
-    return this.request(`/connections/${id}`, {
-      method: "DELETE",
-    });
-  }
-
   async testConnection(
     data: TestConnectionData
   ): Promise<TestConnectionResult> {
@@ -81,45 +69,53 @@ class ApiClient {
     });
   }
 
-  async getDatabases(connectionId: string): Promise<DatabaseInfo[]> {
-    return this.request(`/database/${connectionId}/databases`);
+  async getDatabases(conn: DatabaseConnection): Promise<DatabaseInfo[]> {
+    return this.request("/database/databases", {
+      method: "POST",
+      body: JSON.stringify({ connection: toConnectionDetails(conn) }),
+    });
   }
 
-  async getSchemas(connectionId: string): Promise<SchemaInfo[]> {
-    return this.request(`/database/${connectionId}/schemas`);
+  async getSchemas(conn: DatabaseConnection): Promise<SchemaInfo[]> {
+    return this.request("/database/schemas", {
+      method: "POST",
+      body: JSON.stringify({ connection: toConnectionDetails(conn) }),
+    });
   }
 
-  async getTables(connectionId: string, schema: string): Promise<TableInfo[]> {
-    return this.request(
-      `/database/${connectionId}/schemas/${encodeURIComponent(schema)}/tables`
-    );
+  async getTables(conn: DatabaseConnection, schema: string): Promise<TableInfo[]> {
+    return this.request("/database/tables", {
+      method: "POST",
+      body: JSON.stringify({ connection: toConnectionDetails(conn), schema }),
+    });
   }
 
   async getColumns(
-    connectionId: string,
+    conn: DatabaseConnection,
     schema: string,
     table: string
   ): Promise<ColumnInfo[]> {
-    return this.request(
-      `/database/${connectionId}/schemas/${encodeURIComponent(schema)}/tables/${encodeURIComponent(table)}/columns`
-    );
+    return this.request("/database/columns", {
+      method: "POST",
+      body: JSON.stringify({ connection: toConnectionDetails(conn), schema, table }),
+    });
   }
 
   async executeQuery(
-    connectionId: string,
+    conn: DatabaseConnection,
     query: string
   ): Promise<QueryResult> {
     return this.request("/query", {
       method: "POST",
       body: JSON.stringify({
-        connectionId,
+        connection: toConnectionDetails(conn),
         query,
       }),
     });
   }
 
   async getTableData(
-    connectionId: string,
+    conn: DatabaseConnection,
     schema: string,
     table: string,
     options: {
@@ -129,16 +125,10 @@ class ApiClient {
       orderDir?: "ASC" | "DESC";
     } = {}
   ): Promise<TableData> {
-    const params = new URLSearchParams();
-    if (options.page) params.set("page", options.page.toString());
-    if (options.pageSize) params.set("pageSize", options.pageSize.toString());
-    if (options.orderBy) params.set("orderBy", options.orderBy);
-    if (options.orderDir) params.set("orderDir", options.orderDir);
-
-    return this.request(`/data/table?${params}`, {
+    return this.request("/data/table", {
       method: "POST",
       body: JSON.stringify({
-        connectionId,
+        connection: toConnectionDetails(conn),
         schema,
         table,
         ...options,

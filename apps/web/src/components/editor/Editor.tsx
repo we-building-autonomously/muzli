@@ -107,7 +107,7 @@ export function Editor({
   const executeMutation = useMutation({
     mutationFn: () => {
       if (!selectedConnection) throw new Error("No connection selected");
-      return apiClient.executeQuery(selectedConnection.id, query);
+      return apiClient.executeQuery(selectedConnection, query);
     },
     onSuccess: (result) => {
       onQueryExecute(result);

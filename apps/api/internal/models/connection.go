@@ -1,43 +1,37 @@
 package models
 
-import (
-	"time"
-)
-
 type Connection struct {
-	ID           string    `json:"id" db:"id"`
-	Name         string    `json:"name" db:"name"`
-	Type         string    `json:"type" db:"type"`
-	Host         string    `json:"host" db:"host"`
-	Port         int       `json:"port" db:"port"`
-	DatabaseName string    `json:"database" db:"database_name"`
-	Username     string    `json:"username" db:"username"`
-	Password     string    `json:"password,omitempty" db:"password"`
-	SSL          bool      `json:"ssl" db:"ssl"`
-	CreatedAt    time.Time `json:"createdAt" db:"created_at"`
-	UpdatedAt    time.Time `json:"updatedAt" db:"updated_at"`
-}
-
-type CreateConnectionRequest struct {
-	Name         string `json:"name" binding:"required"`
-	Type         string `json:"type" binding:"required"`
-	Host         string `json:"host" binding:"required"`
-	Port         int    `json:"port" binding:"omitempty,min=0,max=65535"`
-	DatabaseName string `json:"database"`
-	Username     string `json:"username"`
-	Password     string `json:"password"`
-	SSL          bool   `json:"ssl"`
-}
-
-type UpdateConnectionRequest struct {
+	ID           string `json:"id"`
 	Name         string `json:"name"`
 	Type         string `json:"type"`
 	Host         string `json:"host"`
-	Port         int    `json:"port" binding:"omitempty,min=1,max=65535"`
+	Port         int    `json:"port"`
 	DatabaseName string `json:"database"`
 	Username     string `json:"username"`
-	Password     string `json:"password"`
+	Password     string `json:"password,omitempty"`
 	SSL          bool   `json:"ssl"`
+}
+
+type ConnectionDetails struct {
+	Type     string `json:"type" binding:"required"`
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	Database string `json:"database"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+	SSL      bool   `json:"ssl"`
+}
+
+func (cd ConnectionDetails) ToConnection() *Connection {
+	return &Connection{
+		Type:         cd.Type,
+		Host:         cd.Host,
+		Port:         cd.Port,
+		DatabaseName: cd.Database,
+		Username:     cd.Username,
+		Password:     cd.Password,
+		SSL:          cd.SSL,
+	}
 }
 
 type TestConnectionRequest struct {
@@ -105,18 +99,37 @@ type ColumnResult struct {
 type RowResult map[string]interface{}
 
 type QueryRequest struct {
-	ConnectionID string `json:"connectionId" binding:"required"`
-	Query        string `json:"query" binding:"required"`
+	Connection ConnectionDetails `json:"connection" binding:"required"`
+	Query      string            `json:"query" binding:"required"`
+}
+
+type DatabaseExploreRequest struct {
+	Connection ConnectionDetails `json:"connection" binding:"required"`
+}
+
+type SchemaExploreRequest struct {
+	Connection ConnectionDetails `json:"connection" binding:"required"`
+}
+
+type TableExploreRequest struct {
+	Connection ConnectionDetails `json:"connection" binding:"required"`
+	Schema     string            `json:"schema"`
+}
+
+type ColumnExploreRequest struct {
+	Connection ConnectionDetails `json:"connection" binding:"required"`
+	Schema     string            `json:"schema"`
+	Table      string            `json:"table" binding:"required"`
 }
 
 type TableDataRequest struct {
-	ConnectionID string `json:"connectionId" binding:"required"`
-	Schema       string `json:"schema" binding:"required"`
-	Table        string `json:"table" binding:"required"`
-	Page         int    `json:"page"`
-	PageSize     int    `json:"pageSize"`
-	OrderBy      string `json:"orderBy"`
-	OrderDir     string `json:"orderDir"`
+	Connection ConnectionDetails `json:"connection" binding:"required"`
+	Schema     string            `json:"schema"`
+	Table      string            `json:"table" binding:"required"`
+	Page       int               `json:"page"`
+	PageSize   int               `json:"pageSize"`
+	OrderBy    string            `json:"orderBy"`
+	OrderDir   string            `json:"orderDir"`
 }
 
 type TableDataResponse struct {

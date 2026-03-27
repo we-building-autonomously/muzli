@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log"
 	"net/http"
@@ -14,11 +13,9 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
-	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/we-building-autonomously/muzli/internal/api"
 	"github.com/we-building-autonomously/muzli/internal/config"
-	"github.com/we-building-autonomously/muzli/internal/db"
 	"github.com/we-building-autonomously/muzli/internal/services"
 )
 
@@ -30,29 +27,16 @@ func main() {
 
 	cfg := config.Load()
 
-	// Initialize database
-	database, err := sql.Open("sqlite3", cfg.DatabasePath)
-	if err != nil {
-		log.Fatal("Failed to connect to database:", err)
-	}
-	defer database.Close()
-
-	// Run migrations
-	if err := db.Migrate(database); err != nil {
-		log.Fatal("Failed to run migrations:", err)
-	}
-
 	// Initialize services
-	connectionService := services.NewConnectionService(database)
 	queryService := services.NewQueryService()
 
 	// Setup router
 	router := gin.New()
-	
+
 	// Middleware
 	router.Use(gin.Logger())
 	router.Use(gin.Recovery())
-	
+
 	// CORS configuration
 	corsConfig := cors.DefaultConfig()
 	corsConfig.AllowAllOrigins = true
@@ -61,7 +45,7 @@ func main() {
 	router.Use(cors.New(corsConfig))
 
 	// Initialize API routes
-	api.SetupRoutes(router, connectionService, queryService)
+	api.SetupRoutes(router, queryService)
 
 	// Setup server
 	srv := &http.Server{
@@ -76,7 +60,7 @@ func main() {
 		}
 	}()
 
-	fmt.Printf("🚀 Muzli API server running on port %s\n", cfg.Port)
+	fmt.Printf("Muzli API server running on port %s\n", cfg.Port)
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)

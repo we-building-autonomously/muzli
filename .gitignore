@@ -7,3 +7,6 @@ release/
 .env
 .env.local
 .DS_Store
+
+vectordb-datagrip-plugin/
+apps/web-old/
