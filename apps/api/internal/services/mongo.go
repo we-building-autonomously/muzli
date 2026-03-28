@@ -107,6 +107,7 @@ func (s *MongoService) TestConnection(req models.TestConnectionRequest) (*models
 }
 
 type mongoQuery struct {
+	Database   string        `json:"database"`
 	Collection string        `json:"collection"`
 	Operation  string        `json:"operation"`
 	Filter     bson.M        `json:"filter"`
@@ -140,7 +141,14 @@ func (s *MongoService) ExecuteQuery(conn *models.Connection, query string) (*mod
 	defer cancel()
 
 	startTime := time.Now()
-	db := client.Database(conn.DatabaseName)
+	dbName := mq.Database
+	if dbName == "" {
+		dbName = conn.DatabaseName
+	}
+	if dbName == "" {
+		return nil, fmt.Errorf("database is required — select a database from the sidebar or add \"database\" to the query")
+	}
+	db := client.Database(dbName)
 	coll := db.Collection(mq.Collection)
 
 	switch mq.Operation {

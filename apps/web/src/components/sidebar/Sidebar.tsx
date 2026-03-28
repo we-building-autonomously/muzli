@@ -12,7 +12,7 @@ import {
   setSchemaCache,
   removeSchemaCache,
 } from "@/lib/connections";
-import type { DatabaseConnection, TableData, VectorSearchContext } from "@/types";
+import type { DatabaseConnection, TableData, VectorSearchContext, DbContext } from "@/types";
 import type { DbMetadata } from "@/lib/sql-autocomplete";
 
 const DB_ICONS: Record<string, string> = {
@@ -30,6 +30,7 @@ interface SidebarProps {
   onConnectionSelect: (connection: DatabaseConnection | null) => void;
   onTableSelect: (data: TableData) => void;
   onVectorContextSelect?: (ctx: VectorSearchContext) => void;
+  onDbContextSelect?: (ctx: DbContext) => void;
   onDbTreeChange?: (metadata: DbMetadata | null) => void;
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
@@ -44,7 +45,7 @@ interface TreeState {
 
 export function Sidebar({
   selectedConnection, onConnectionSelect, onTableSelect,
-  onVectorContextSelect, onDbTreeChange, isLoading, setIsLoading, restoredConnectionId,
+  onVectorContextSelect, onDbContextSelect, onDbTreeChange, isLoading, setIsLoading, restoredConnectionId,
 }: SidebarProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [hasRestored, setHasRestored] = useState(false);
@@ -391,7 +392,7 @@ export function Sidebar({
                                 <div key={t.name}>
                                   <div
                                     className="flex items-center gap-1.5 py-1 px-2 rounded-md cursor-pointer text-xs hover:bg-muted/50"
-                                    onClick={(e) => { e.stopPropagation(); toggleTable(connection.id, tableKey); }}
+                                    onClick={(e) => { e.stopPropagation(); toggleTable(connection.id, tableKey); onDbContextSelect?.({ schema: s.name, table: t.name }); }}
                                   >
                                     {tableExpanded ? <ChevronDown className="h-3 w-3 text-muted-foreground flex-shrink-0" /> : <ChevronRight className="h-3 w-3 text-muted-foreground flex-shrink-0" />}
                                     <Table2 className="h-3 w-3 text-blue-400/70 flex-shrink-0" />

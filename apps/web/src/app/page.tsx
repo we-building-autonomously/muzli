@@ -6,7 +6,7 @@ import { QueryProvider } from "@/components/providers/QueryProvider";
 import { Sidebar } from "@/components/sidebar/Sidebar";
 import { Editor } from "@/components/editor/Editor";
 import { Results } from "@/components/results/Results";
-import type { DatabaseConnection, QueryResult, TableData, VectorSearchContext } from "@/types";
+import type { DatabaseConnection, QueryResult, TableData, VectorSearchContext, DbContext } from "@/types";
 import type { DbMetadata } from "@/lib/sql-autocomplete";
 
 const STORAGE_KEY = "muzli:selectedConnectionId";
@@ -19,6 +19,7 @@ function MuzliApp() {
   const [isLoading, setIsLoading] = useState(false);
   const [restoredConnectionId, setRestoredConnectionId] = useState<string | null>(null);
   const [vectorContext, setVectorContext] = useState<VectorSearchContext | null>(null);
+  const [dbContext, setDbContext] = useState<DbContext | null>(null);
   const [queryError, setQueryError] = useState<string | null>(null);
   const [dbMetadata, setDbMetadata] = useState<DbMetadata | null>(null);
 
@@ -62,10 +63,6 @@ function MuzliApp() {
     setQueryResult(null);
   };
 
-  const handleVectorContextSelect = (ctx: VectorSearchContext) => {
-    setVectorContext(ctx);
-  };
-
   return (
     <div className="h-screen bg-background text-foreground">
       <div className="border-b">
@@ -81,7 +78,8 @@ function MuzliApp() {
               selectedConnection={selectedConnection}
               onConnectionSelect={handleConnectionSelect}
               onTableSelect={handleTableSelect}
-              onVectorContextSelect={handleVectorContextSelect}
+              onVectorContextSelect={setVectorContext}
+              onDbContextSelect={setDbContext}
               onDbTreeChange={setDbMetadata}
               isLoading={isLoading}
               setIsLoading={setIsLoading}
@@ -101,6 +99,7 @@ function MuzliApp() {
                   isLoading={isLoading}
                   setIsLoading={setIsLoading}
                   vectorContext={vectorContext}
+                  dbContext={dbContext}
                   dbMetadata={dbMetadata}
                 />
               </Panel>

@@ -7,7 +7,7 @@ import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
 import { apiClient } from "@/api/client";
 import { registerSqlCompletionProvider, type DbMetadata } from "@/lib/sql-autocomplete";
-import type { DatabaseConnection, QueryResult, VectorSearchContext } from "@/types";
+import type { DatabaseConnection, QueryResult, VectorSearchContext, DbContext } from "@/types";
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
   ssr: false,
@@ -20,13 +20,16 @@ const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
 
 const SQL_DEFAULT = "-- Welcome to Muzli!\n-- Write your SQL queries here\n\nSELECT * FROM \nLIMIT 100;";
 
-const MONGO_DEFAULT = `// MongoDB Query
-{
-  "collection": "users",
+function buildMongoDefault(ctx?: DbContext | null) {
+  const collection = ctx?.table || "collection_name";
+  const db = ctx?.schema ? `\n  "database": "${ctx.schema}",` : "";
+  return `{${db}
+  "collection": "${collection}",
   "operation": "find",
   "filter": {},
   "limit": 50
 }`;
+}
 
 function buildPineconeDefault(ctx?: VectorSearchContext | null) {
   const index = ctx?.index || "my-index";
@@ -66,6 +69,7 @@ interface EditorProps {
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
   vectorContext?: VectorSearchContext | null;
+  dbContext?: DbContext | null;
   dbMetadata?: DbMetadata | null;
 }
 
@@ -76,6 +80,7 @@ export function Editor({
   isLoading,
   setIsLoading,
   vectorContext,
+  dbContext,
   dbMetadata,
 }: EditorProps) {
   const isMongo = selectedConnection?.type === "mongodb";
@@ -100,17 +105,38 @@ export function Editor({
     } else if (isTurbopuffer) {
       setQuery(buildTurbopufferDefault(vectorContext));
     } else if (isMongo) {
-      setQuery(MONGO_DEFAULT);
+      setQuery(buildMongoDefault(dbContext));
     } else {
-      setQuery(SQL_DEFAULT);
+      if (dbContext?.table) {
+        const table = dbContext.schema
+          ? `"${dbContext.schema}"."${dbContext.table}"`
+          : dbContext.table;
+        setQuery(`SELECT * FROM ${table}\nLIMIT 100;`);
+      } else {
+        setQuery(SQL_DEFAULT);
+      }
     }
   }, [selectedConnection?.id, isMongo, isPinecone, isTurbopuffer]);
 
+  // Update query when vector context changes
   useEffect(() => {
     if (!vectorContext) return;
     if (isPinecone) setQuery(buildPineconeDefault(vectorContext));
     else if (isTurbopuffer) setQuery(buildTurbopufferDefault(vectorContext));
   }, [vectorContext?.index, vectorContext?.namespace, isPinecone, isTurbopuffer]);
+
+  // Update query when db context changes (table/collection clicked in sidebar)
+  useEffect(() => {
+    if (!dbContext || !selectedConnection) return;
+    if (isMongo) {
+      setQuery(buildMongoDefault(dbContext));
+    } else if (isSql && dbContext.table) {
+      const table = dbContext.schema
+        ? `"${dbContext.schema}"."${dbContext.table}"`
+        : dbContext.table;
+      setQuery(`SELECT * FROM ${table}\nLIMIT ${queryLimit || 100};`);
+    }
+  }, [dbContext?.schema, dbContext?.table, isMongo, isSql]);
 
   // Register/re-register completion provider when metadata from sidebar changes
   useEffect(() => {

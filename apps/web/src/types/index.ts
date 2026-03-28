@@ -105,6 +105,11 @@ export interface PineconeIndex {
   namespaces: string[];
 }
 
+export interface DbContext {
+  schema: string;
+  table: string;
+}
+
 export interface VectorSearchContext {
   index: string;
   host: string;
