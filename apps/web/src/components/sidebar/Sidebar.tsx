@@ -123,23 +123,31 @@ export function Sidebar({
 
     setSchemaLoading((prev) => new Set(prev).add(conn.id));
     try {
-      const schemas = await apiClient.getSchemas(conn);
+      const schemas = await apiClient.getSchemas(conn).catch(() => null);
+      if (!schemas || !Array.isArray(schemas)) {
+        setSchemaData((prev) => ({ ...prev, [conn.id]: { schemas: [] } }));
+        return;
+      }
       const result: DbMetadata = { schemas: [] };
 
       await Promise.all(
         schemas.map(async (schema) => {
-          const tables = await apiClient.getTables(conn, schema.name).catch(() => []);
+          const tables = await apiClient.getTables(conn, schema.name).catch(() => null);
+          if (!tables || !Array.isArray(tables)) {
+            result.schemas.push({ name: schema.name, tables: [] });
+            return;
+          }
           const tablesWithCols = await Promise.all(
             tables.map(async (table) => {
-              const columns = await apiClient.getColumns(conn, schema.name, table.name).catch(() => []);
+              const columns = await apiClient.getColumns(conn, schema.name, table.name).catch(() => null);
               return {
                 name: table.name,
                 type: table.type || "table",
-                columns: columns.map((c) => ({
+                columns: (columns && Array.isArray(columns)) ? columns.map((c) => ({
                   name: c.name,
                   dataType: c.dataType,
                   isPrimaryKey: c.isPrimaryKey,
-                })),
+                })) : [],
               };
             })
           );
