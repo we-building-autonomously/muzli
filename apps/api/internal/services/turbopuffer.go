@@ -20,6 +20,7 @@ type TurbopufferService struct {
 
 type turbopufferClient struct {
 	apiKey string
+	region string
 	http   *http.Client
 }
 
@@ -30,7 +31,11 @@ func NewTurbopufferService() *TurbopufferService {
 }
 
 func (s *TurbopufferService) getClient(conn *models.Connection) *turbopufferClient {
-	key := conn.Password
+	region := conn.Host
+	if region == "" {
+		region = "gcp-us-central1"
+	}
+	key := conn.Password + ":" + region
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if c, ok := s.clients[key]; ok {
@@ -38,6 +43,7 @@ func (s *TurbopufferService) getClient(conn *models.Connection) *turbopufferClie
 	}
 	c := &turbopufferClient{
 		apiKey: conn.Password,
+		region: region,
 		http:   &http.Client{Timeout: 30 * time.Second},
 	}
 	s.clients[key] = c
@@ -45,7 +51,11 @@ func (s *TurbopufferService) getClient(conn *models.Connection) *turbopufferClie
 }
 
 func (c *turbopufferClient) do(ctx context.Context, method, path string, body interface{}) (json.RawMessage, error) {
-	url := fmt.Sprintf("https://gcp-us-central1.turbopuffer.com/v1%s", path)
+	region := c.region
+	if region == "" {
+		region = "gcp-us-central1"
+	}
+	url := fmt.Sprintf("https://%s.turbopuffer.com/v1%s", region, path)
 
 	var reqBody io.Reader
 	if body != nil {
