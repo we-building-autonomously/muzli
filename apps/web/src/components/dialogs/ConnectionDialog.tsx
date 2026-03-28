@@ -222,11 +222,14 @@ export function ConnectionDialog({
   };
 
   const isVectorDb = formData.type === "pinecone" || formData.type === "turbopuffer";
+  const needsHost = !isVectorDb;
+  const needsDatabase = !["redis", "pinecone", "turbopuffer", "sqlite", "mongodb"].includes(formData.type);
+  const needsUsername = !["sqlite", "redis", "pinecone", "turbopuffer", "mongodb"].includes(formData.type);
   const isFormValid =
     formData.name &&
-    (isVectorDb || formData.host) &&
-    (formData.type === "redis" || isVectorDb || formData.type === "sqlite" || formData.database) &&
-    (formData.type === "sqlite" || formData.type === "redis" || isVectorDb || formData.username) &&
+    (!needsHost || formData.host) &&
+    (!needsDatabase || formData.database) &&
+    (!needsUsername || formData.username) &&
     (!isVectorDb || formData.password);
 
   return (
