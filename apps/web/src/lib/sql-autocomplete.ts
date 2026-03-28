@@ -81,29 +81,35 @@ export function registerSqlCompletionProvider(
       let sortBase = 0;
 
       // Check if cursor is right after a dot (e.g., "public." or "users.")
-      const dotMatch = textBeforeCursor.match(/(\w+)\.\s*(\w*)$/);
+      const dotMatch = textBeforeCursor.match(/"?(\w+)"?\.\s*"?(\w*)"?$/);
       if (dotMatch) {
         const prefix = dotMatch[1];
-        // Adjust range for word after dot
         const afterDotWord = dotMatch[2];
-        const adjustedRange = {
-          ...range,
-          startColumn: position.column - afterDotWord.length,
+
+        // Range covers everything from the schema name start through cursor
+        // so we replace "schema.partial" with "schema"."table"
+        const fullMatchStart = textBeforeCursor.lastIndexOf(dotMatch[0]);
+        const fullRange = {
+          startLineNumber: position.lineNumber,
+          endLineNumber: position.lineNumber,
+          startColumn: fullMatchStart + 1,
+          endColumn: position.column,
         };
 
-        // Schema.table
+        // Schema.table → insert "schema"."table"
         const schema = metadata.schemas.find(
           (s) => s.name.toLowerCase() === prefix.toLowerCase()
         );
         if (schema) {
           for (const table of schema.tables) {
             suggestions.push({
-              label: table.name,
+              label: `${schema.name}.${table.name}`,
               kind: monaco.languages.CompletionItemKind.Struct,
-              insertText: table.name,
-              detail: `${table.type} in ${schema.name}`,
+              insertText: `"${schema.name}"."${table.name}"`,
+              filterText: `${prefix}.${table.name}`,
+              detail: `${table.type}`,
               sortText: `0_${table.name}`,
-              range: adjustedRange,
+              range: fullRange,
             });
           }
           return { suggestions };
@@ -115,6 +121,10 @@ export function registerSqlCompletionProvider(
             (t) => t.name.toLowerCase() === prefix.toLowerCase()
           );
           if (table) {
+            const colRange = {
+              ...range,
+              startColumn: position.column - afterDotWord.length,
+            };
             for (const col of table.columns) {
               suggestions.push({
                 label: col.name,
@@ -122,7 +132,7 @@ export function registerSqlCompletionProvider(
                 insertText: col.name,
                 detail: `${col.dataType}${col.isPrimaryKey ? " PK" : ""}`,
                 sortText: `0_${col.name}`,
-                range: adjustedRange,
+                range: colRange,
               });
             }
             return { suggestions };
