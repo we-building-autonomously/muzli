@@ -43,10 +43,6 @@ func (s *MongoService) getClient(conn *models.Connection) (*mongo.Client, error)
 		return nil, fmt.Errorf("MongoDB connection string or host is required")
 	}
 
-	// Default database name if not provided
-	if conn.DatabaseName == "" {
-		conn.DatabaseName = "admin"
-	}
 
 	key := uri
 	s.mu.Lock()
@@ -93,8 +89,7 @@ func (s *MongoService) TestConnection(req models.TestConnectionRequest) (*models
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	var buildInfo bson.M
-	err = client.Database("admin").RunCommand(ctx, bson.D{{Key: "buildInfo", Value: 1}}).Decode(&buildInfo)
+	result, err := client.ListDatabases(ctx, bson.D{})
 	if err != nil {
 		return &models.TestConnectionResponse{
 			Success: false,
@@ -102,7 +97,7 @@ func (s *MongoService) TestConnection(req models.TestConnectionRequest) (*models
 		}, nil
 	}
 
-	version := fmt.Sprintf("MongoDB %v", buildInfo["version"])
+	version := fmt.Sprintf("MongoDB (%d databases)", len(result.Databases))
 
 	return &models.TestConnectionResponse{
 		Success: true,
