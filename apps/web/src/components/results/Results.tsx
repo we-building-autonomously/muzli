@@ -13,26 +13,36 @@ const VectorVisualization = lazy(() =>
 
 function JsonCell({ value }: { value: unknown }) {
   const [expanded, setExpanded] = useState(false);
+  const [pos, setPos] = useState({ x: 0, y: 0 });
   const json = JSON.stringify(value, null, 2);
   const preview = JSON.stringify(value);
 
+  const handleClick = (e: React.MouseEvent) => {
+    const rect = (e.target as HTMLElement).getBoundingClientRect();
+    setPos({ x: rect.left, y: rect.bottom + 4 });
+    setExpanded(!expanded);
+  };
+
   return (
-    <span className="relative">
+    <>
       <span
         className="text-emerald-400 cursor-pointer hover:underline"
-        onClick={() => setExpanded(!expanded)}
+        onClick={handleClick}
       >
         {preview.length > 60 ? preview.slice(0, 60) + "…" : preview}
       </span>
       {expanded && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setExpanded(false)} />
-          <div className="absolute left-0 top-full mt-1 z-50 bg-popover border rounded-md shadow-lg max-w-sm max-h-60 overflow-auto">
+          <div
+            className="fixed z-50 bg-popover border rounded-md shadow-lg max-w-sm max-h-60 overflow-auto"
+            style={{ left: pos.x, top: pos.y }}
+          >
             <pre className="p-2 text-[11px] text-foreground whitespace-pre-wrap">{json}</pre>
           </div>
         </>
       )}
-    </span>
+    </>
   );
 }
 
