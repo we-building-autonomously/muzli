@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Play, Loader2, Database, Search } from "lucide-react";
 import dynamic from "next/dynamic";
@@ -81,13 +81,13 @@ export function Editor({
   const isTurbopuffer = selectedConnection?.type === "turbopuffer";
   const isVectorDb = isPinecone || isTurbopuffer;
   const isJson = isMongo || isVectorDb;
-  const isSql = selectedConnection && !isJson;
+  const isSql = !!selectedConnection && !isJson;
 
   const [query, setQuery] = useState(SQL_DEFAULT);
+  const [metadata, setMetadata] = useState<DbMetadata | null>(null);
   const [metadataLoading, setMetadataLoading] = useState(false);
   const completionProviderRef = useRef<{ dispose: () => void } | null>(null);
-  const metadataRef = useRef<DbMetadata | null>(null);
-  const lastConnectionIdRef = useRef<string | null>(null);
+  const monacoRef = useRef<any>(null);
 
   useEffect(() => {
     if (!selectedConnection) return;
@@ -104,32 +104,38 @@ export function Editor({
 
   useEffect(() => {
     if (!vectorContext) return;
-    if (isPinecone) {
-      setQuery(buildPineconeDefault(vectorContext));
-    } else if (isTurbopuffer) {
-      setQuery(buildTurbopufferDefault(vectorContext));
-    }
+    if (isPinecone) setQuery(buildPineconeDefault(vectorContext));
+    else if (isTurbopuffer) setQuery(buildTurbopufferDefault(vectorContext));
   }, [vectorContext?.index, vectorContext?.namespace, isPinecone, isTurbopuffer]);
 
-  // Load DB metadata for SQL autocomplete
+  // Load DB metadata when SQL connection is selected
   useEffect(() => {
     if (!selectedConnection || !isSql) {
-      lastConnectionIdRef.current = null;
+      setMetadata(null);
       return;
     }
-    if (lastConnectionIdRef.current === selectedConnection.id) return;
-    lastConnectionIdRef.current = selectedConnection.id;
 
+    let cancelled = false;
     setMetadataLoading(true);
+    setMetadata(null);
+
     loadDbMetadata(selectedConnection)
-      .then((metadata) => {
-        metadataRef.current = metadata;
-        setMetadataLoading(false);
-      })
-      .catch(() => {
-        metadataRef.current = null;
-        setMetadataLoading(false);
-      });
+      .then((m) => { if (!cancelled) { setMetadata(m); setMetadataLoading(false); } })
+      .catch(() => { if (!cancelled) { setMetadata(null); setMetadataLoading(false); } });
+
+    return () => { cancelled = true; };
+  }, [selectedConnection?.id, isSql]);
+
+  // Register/re-register completion provider when metadata or monaco changes
+  useEffect(() => {
+    if (completionProviderRef.current) {
+      completionProviderRef.current.dispose();
+      completionProviderRef.current = null;
+    }
+
+    if (monacoRef.current && metadata && isSql) {
+      completionProviderRef.current = registerSqlCompletionProvider(monacoRef.current, metadata);
+    }
 
     return () => {
       if (completionProviderRef.current) {
@@ -137,41 +143,26 @@ export function Editor({
         completionProviderRef.current = null;
       }
     };
-  }, [selectedConnection?.id, isSql]);
+  }, [metadata, isSql]);
 
   const executeMutation = useMutation({
     mutationFn: () => {
       if (!selectedConnection) throw new Error("No connection selected");
       return apiClient.executeQuery(selectedConnection, query);
     },
-    onSuccess: (result) => {
-      onQueryExecute(result);
-      setIsLoading(false);
-    },
-    onError: (error: Error) => {
-      onError?.(error.message);
-      setIsLoading(false);
-    },
+    onSuccess: (result) => { onQueryExecute(result); setIsLoading(false); },
+    onError: (error: Error) => { onError?.(error.message); setIsLoading(false); },
   });
 
-  const handleExecute = () => {
+  const handleExecute = useCallback(() => {
     if (!selectedConnection || !query.trim()) return;
     setIsLoading(true);
     executeMutation.mutate();
-  };
+  }, [selectedConnection, query, setIsLoading, executeMutation]);
 
-  const editorLabel = isVectorDb
-    ? "Vector Search"
-    : isMongo
-      ? "MongoDB"
-      : selectedConnection?.name || "";
-
+  const editorLabel = isVectorDb ? "Vector Search" : isMongo ? "MongoDB" : selectedConnection?.name || "";
   const buttonLabel = isVectorDb ? "Search" : "Run Query";
-  const buttonIcon = isVectorDb ? (
-    <Search className="mr-1.5 h-3 w-3" />
-  ) : (
-    <Play className="mr-1.5 h-3 w-3" />
-  );
+  const buttonIcon = isVectorDb ? <Search className="mr-1.5 h-3 w-3" /> : <Play className="mr-1.5 h-3 w-3" />;
 
   return (
     <div className="h-full flex flex-col">
@@ -194,6 +185,11 @@ export function Editor({
                   loading schema...
                 </span>
               )}
+              {metadata && isSql && !metadataLoading && (
+                <span className="text-emerald-400/50">
+                  ({metadata.schemas.reduce((acc, s) => acc + s.tables.length, 0)} tables)
+                </span>
+              )}
             </div>
           )}
         </div>
@@ -204,18 +200,14 @@ export function Editor({
               onClick={() => { setQuery(PINECONE_LIST_INDEXES); setTimeout(handleExecute, 50); }}
               disabled={!selectedConnection || isLoading}
               variant="outline" size="sm" className="h-7 text-xs px-2.5"
-            >
-              List Indexes
-            </Button>
+            >List Indexes</Button>
           )}
           {isTurbopuffer && (
             <Button
               onClick={() => { setQuery('{\n  "operation": "list_namespaces"\n}'); setTimeout(handleExecute, 50); }}
               disabled={!selectedConnection || isLoading}
               variant="outline" size="sm" className="h-7 text-xs px-2.5"
-            >
-              List Namespaces
-            </Button>
+            >List Namespaces</Button>
           )}
           <Button
             onClick={handleExecute}
@@ -248,37 +240,31 @@ export function Editor({
               scrollBeyondLastLine: false,
               padding: { top: 12, bottom: 12 },
               suggestOnTriggerCharacters: true,
-              quickSuggestions: true,
+              quickSuggestions: { other: true, strings: false, comments: false },
               parameterHints: { enabled: true },
               hover: { enabled: true },
               suggest: {
                 showKeywords: true,
                 showSnippets: true,
                 insertMode: "insert" as const,
+                filterGraceful: true,
+                shareSuggestSelections: true,
               },
+              acceptSuggestionOnCommitCharacter: true,
+              tabCompletion: "on",
             }}
             onMount={(editor, monaco) => {
+              monacoRef.current = monaco;
+
               editor.addCommand(
                 monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
                 () => { handleExecute(); }
               );
 
-              // Register SQL autocomplete if metadata is available
-              if (isSql && metadataRef.current) {
+              // If metadata already loaded, register immediately
+              if (metadata && isSql) {
                 if (completionProviderRef.current) completionProviderRef.current.dispose();
-                completionProviderRef.current = registerSqlCompletionProvider(monaco, metadataRef.current);
-              }
-
-              // Watch for metadata to load after mount
-              if (isSql && !metadataRef.current) {
-                const interval = setInterval(() => {
-                  if (metadataRef.current) {
-                    if (completionProviderRef.current) completionProviderRef.current.dispose();
-                    completionProviderRef.current = registerSqlCompletionProvider(monaco, metadataRef.current);
-                    clearInterval(interval);
-                  }
-                }, 500);
-                setTimeout(() => clearInterval(interval), 30000);
+                completionProviderRef.current = registerSqlCompletionProvider(monaco, metadata);
               }
             }}
           />
