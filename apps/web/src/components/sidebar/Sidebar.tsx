@@ -66,7 +66,21 @@ export function Sidebar({
   // Context menu
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; connectionId: string } | null>(null);
 
-  const refreshConnections = useCallback(() => { setConnections(getConnections()); }, []);
+  const refreshConnections = useCallback(() => {
+    const conns = getConnections();
+    setConnections(conns);
+    // Load cached schemas into state on mount
+    const cached: Record<string, DbMetadata> = {};
+    for (const conn of conns) {
+      if (isRelationalDb(conn.type)) {
+        const c = getSchemaCache(conn.id);
+        if (c) cached[conn.id] = c;
+      }
+    }
+    if (Object.keys(cached).length > 0) {
+      setSchemaData((prev) => ({ ...prev, ...cached }));
+    }
+  }, []);
   useEffect(() => { refreshConnections(); }, [refreshConnections]);
 
   useEffect(() => {
@@ -113,12 +127,16 @@ export function Sidebar({
   };
 
   // --- Load full schema (schemas + tables + columns) ---
-  const loadFullSchema = useCallback(async (conn: DatabaseConnection) => {
-    // Check cache first
-    const cached = getSchemaCache(conn.id);
-    if (cached) {
-      setSchemaData((prev) => ({ ...prev, [conn.id]: cached }));
-      return;
+  const loadFullSchema = useCallback(async (conn: DatabaseConnection, forceRefresh = false) => {
+    if (schemaLoading.has(conn.id)) return;
+
+    if (!forceRefresh) {
+      // Check cache first
+      const cached = getSchemaCache(conn.id);
+      if (cached) {
+        setSchemaData((prev) => ({ ...prev, [conn.id]: cached }));
+        return;
+      }
     }
 
     setSchemaLoading((prev) => new Set(prev).add(conn.id));
@@ -168,7 +186,7 @@ export function Sidebar({
   const handleRefreshSchema = (conn: DatabaseConnection) => {
     removeSchemaCache(conn.id);
     setSchemaData((prev) => { const next = { ...prev }; delete next[conn.id]; return next; });
-    loadFullSchema(conn);
+    loadFullSchema(conn, true);
     setContextMenu(null);
   };
 
