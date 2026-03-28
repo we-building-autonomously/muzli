@@ -524,7 +524,7 @@ export function Sidebar({
                     </button>
                   )}
                   <button
-                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-destructive/20 text-destructive transition-colors"
+                    className="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/20 hover:text-red-300 transition-colors"
                     onClick={() => handleDeleteConnection(contextMenu.connectionId)}
                   >
                     Delete Connection
