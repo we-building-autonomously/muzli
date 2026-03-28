@@ -7,6 +7,7 @@ import { Sidebar } from "@/components/sidebar/Sidebar";
 import { Editor } from "@/components/editor/Editor";
 import { Results } from "@/components/results/Results";
 import type { DatabaseConnection, QueryResult, TableData, VectorSearchContext } from "@/types";
+import type { DbMetadata } from "@/lib/sql-autocomplete";
 
 const STORAGE_KEY = "muzli:selectedConnectionId";
 
@@ -19,6 +20,7 @@ function MuzliApp() {
   const [restoredConnectionId, setRestoredConnectionId] = useState<string | null>(null);
   const [vectorContext, setVectorContext] = useState<VectorSearchContext | null>(null);
   const [queryError, setQueryError] = useState<string | null>(null);
+  const [dbMetadata, setDbMetadata] = useState<DbMetadata | null>(null);
 
   useEffect(() => {
     try {
@@ -80,6 +82,7 @@ function MuzliApp() {
               onConnectionSelect={handleConnectionSelect}
               onTableSelect={handleTableSelect}
               onVectorContextSelect={handleVectorContextSelect}
+              onDbTreeChange={setDbMetadata}
               isLoading={isLoading}
               setIsLoading={setIsLoading}
               restoredConnectionId={restoredConnectionId}
@@ -98,6 +101,7 @@ function MuzliApp() {
                   isLoading={isLoading}
                   setIsLoading={setIsLoading}
                   vectorContext={vectorContext}
+                  dbMetadata={dbMetadata}
                 />
               </Panel>
 

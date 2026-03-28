@@ -6,7 +6,7 @@ import { Play, Loader2, Database, Search } from "lucide-react";
 import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
 import { apiClient } from "@/api/client";
-import { loadDbMetadata, registerSqlCompletionProvider, type DbMetadata } from "@/lib/sql-autocomplete";
+import { registerSqlCompletionProvider, type DbMetadata } from "@/lib/sql-autocomplete";
 import type { DatabaseConnection, QueryResult, VectorSearchContext } from "@/types";
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
@@ -66,6 +66,7 @@ interface EditorProps {
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
   vectorContext?: VectorSearchContext | null;
+  dbMetadata?: DbMetadata | null;
 }
 
 export function Editor({
@@ -75,6 +76,7 @@ export function Editor({
   isLoading,
   setIsLoading,
   vectorContext,
+  dbMetadata,
 }: EditorProps) {
   const isMongo = selectedConnection?.type === "mongodb";
   const isPinecone = selectedConnection?.type === "pinecone";
@@ -85,10 +87,11 @@ export function Editor({
 
   const [query, setQuery] = useState(SQL_DEFAULT);
   const [queryLimit, setQueryLimit] = useState(100);
-  const [metadata, setMetadata] = useState<DbMetadata | null>(null);
-  const [metadataLoading, setMetadataLoading] = useState(false);
   const completionProviderRef = useRef<{ dispose: () => void } | null>(null);
   const monacoRef = useRef<any>(null);
+
+  // Use metadata from sidebar (passed via props)
+  const metadata = dbMetadata || null;
 
   useEffect(() => {
     if (!selectedConnection) return;
@@ -109,28 +112,7 @@ export function Editor({
     else if (isTurbopuffer) setQuery(buildTurbopufferDefault(vectorContext));
   }, [vectorContext?.index, vectorContext?.namespace, isPinecone, isTurbopuffer]);
 
-  // Load DB metadata when SQL connection is selected
-  useEffect(() => {
-    if (!selectedConnection || !isSql) {
-      setMetadata(null);
-      return;
-    }
-
-    let cancelled = false;
-    setMetadataLoading(true);
-    setMetadata(null);
-
-    loadDbMetadata(selectedConnection)
-      .then((m) => { if (!cancelled) { setMetadata(m); setMetadataLoading(false); } })
-      .catch(() => {
-        // Even if metadata fails, set empty metadata so keywords still work
-        if (!cancelled) { setMetadata({ schemas: [] }); setMetadataLoading(false); }
-      });
-
-    return () => { cancelled = true; };
-  }, [selectedConnection?.id, isSql]);
-
-  // Register/re-register completion provider when metadata, monaco, or mode changes
+  // Register/re-register completion provider when metadata from sidebar changes
   useEffect(() => {
     if (completionProviderRef.current) {
       completionProviderRef.current.dispose();
@@ -196,13 +178,7 @@ export function Editor({
                   {vectorContext.namespace ? ` / ${vectorContext.namespace}` : ""}
                 </span>
               )}
-              {metadataLoading && isSql && (
-                <span className="text-muted-foreground/50 flex items-center gap-1">
-                  <Loader2 className="h-2.5 w-2.5 animate-spin" />
-                  loading schema...
-                </span>
-              )}
-              {metadata && isSql && !metadataLoading && (
+              {metadata && isSql && (
                 <span className="text-emerald-400/50">
                   ({metadata.schemas.reduce((acc, s) => acc + s.tables.length, 0)} tables)
                 </span>

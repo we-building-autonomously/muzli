@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { ConnectionDialog } from "@/components/dialogs/ConnectionDialog";
 import { apiClient } from "@/api/client";
 import { getConnections, deleteConnection as removeConnection } from "@/lib/connections";
-import type { DatabaseConnection, TableData, VectorSearchContext, SchemaInfo, TableInfo, ColumnInfo } from "@/types";
+import type { DatabaseConnection, TableData, VectorSearchContext, ColumnInfo } from "@/types";
+import type { DbMetadata } from "@/lib/sql-autocomplete";
 
 const DB_ICONS: Record<string, string> = {
   postgres: "🐘",
@@ -55,6 +56,7 @@ interface SidebarProps {
   onConnectionSelect: (connection: DatabaseConnection | null) => void;
   onTableSelect: (data: TableData) => void;
   onVectorContextSelect?: (ctx: VectorSearchContext) => void;
+  onDbTreeChange?: (metadata: DbMetadata | null) => void;
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
   restoredConnectionId: string | null;
@@ -65,6 +67,7 @@ export function Sidebar({
   onConnectionSelect,
   onTableSelect,
   onVectorContextSelect,
+  onDbTreeChange,
   isLoading,
   setIsLoading,
   restoredConnectionId,
@@ -87,6 +90,29 @@ export function Sidebar({
   }, []);
 
   useEffect(() => { refreshConnections(); }, [refreshConnections]);
+
+  // Emit DB tree data to parent for autocomplete whenever it changes
+  useEffect(() => {
+    if (!selectedConnection || !onDbTreeChange) return;
+    const tree = dbTree[selectedConnection.id];
+    if (!tree || tree.loading) return;
+
+    const metadata: DbMetadata = {
+      schemas: tree.schemas.map((s) => ({
+        name: s.name,
+        tables: s.tables.map((t) => ({
+          name: t.name,
+          type: t.type,
+          columns: t.columns.map((c) => ({
+            name: c.name,
+            dataType: c.dataType,
+            isPrimaryKey: c.isPrimaryKey,
+          })),
+        })),
+      })),
+    };
+    onDbTreeChange(metadata);
+  }, [dbTree, selectedConnection?.id, onDbTreeChange]);
 
   useEffect(() => {
     if (!hasRestored && restoredConnectionId && connections.length) {
