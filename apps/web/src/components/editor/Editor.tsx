@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Play, Loader2, Database, Search } from "lucide-react";
 import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
 import { apiClient } from "@/api/client";
+import { loadDbMetadata, registerSqlCompletionProvider, type DbMetadata } from "@/lib/sql-autocomplete";
 import type { DatabaseConnection, QueryResult, VectorSearchContext } from "@/types";
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
@@ -80,8 +81,13 @@ export function Editor({
   const isTurbopuffer = selectedConnection?.type === "turbopuffer";
   const isVectorDb = isPinecone || isTurbopuffer;
   const isJson = isMongo || isVectorDb;
+  const isSql = selectedConnection && !isJson;
 
   const [query, setQuery] = useState(SQL_DEFAULT);
+  const [metadataLoading, setMetadataLoading] = useState(false);
+  const completionProviderRef = useRef<{ dispose: () => void } | null>(null);
+  const metadataRef = useRef<DbMetadata | null>(null);
+  const lastConnectionIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!selectedConnection) return;
@@ -96,7 +102,6 @@ export function Editor({
     }
   }, [selectedConnection?.id, isMongo, isPinecone, isTurbopuffer]);
 
-  // Update query when vector context changes (index/namespace selected in sidebar)
   useEffect(() => {
     if (!vectorContext) return;
     if (isPinecone) {
@@ -105,6 +110,34 @@ export function Editor({
       setQuery(buildTurbopufferDefault(vectorContext));
     }
   }, [vectorContext?.index, vectorContext?.namespace, isPinecone, isTurbopuffer]);
+
+  // Load DB metadata for SQL autocomplete
+  useEffect(() => {
+    if (!selectedConnection || !isSql) {
+      lastConnectionIdRef.current = null;
+      return;
+    }
+    if (lastConnectionIdRef.current === selectedConnection.id) return;
+    lastConnectionIdRef.current = selectedConnection.id;
+
+    setMetadataLoading(true);
+    loadDbMetadata(selectedConnection)
+      .then((metadata) => {
+        metadataRef.current = metadata;
+        setMetadataLoading(false);
+      })
+      .catch(() => {
+        metadataRef.current = null;
+        setMetadataLoading(false);
+      });
+
+    return () => {
+      if (completionProviderRef.current) {
+        completionProviderRef.current.dispose();
+        completionProviderRef.current = null;
+      }
+    };
+  }, [selectedConnection?.id, isSql]);
 
   const executeMutation = useMutation({
     mutationFn: () => {
@@ -155,6 +188,12 @@ export function Editor({
                   {vectorContext.namespace ? ` / ${vectorContext.namespace}` : ""}
                 </span>
               )}
+              {metadataLoading && isSql && (
+                <span className="text-muted-foreground/50 flex items-center gap-1">
+                  <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                  loading schema...
+                </span>
+              )}
             </div>
           )}
         </div>
@@ -162,28 +201,18 @@ export function Editor({
         <div className="flex items-center gap-1.5">
           {isPinecone && (
             <Button
-              onClick={() => {
-                setQuery(PINECONE_LIST_INDEXES);
-                setTimeout(handleExecute, 50);
-              }}
+              onClick={() => { setQuery(PINECONE_LIST_INDEXES); setTimeout(handleExecute, 50); }}
               disabled={!selectedConnection || isLoading}
-              variant="outline"
-              size="sm"
-              className="h-7 text-xs px-2.5"
+              variant="outline" size="sm" className="h-7 text-xs px-2.5"
             >
               List Indexes
             </Button>
           )}
           {isTurbopuffer && (
             <Button
-              onClick={() => {
-                setQuery('{\n  "operation": "list_namespaces"\n}');
-                setTimeout(handleExecute, 50);
-              }}
+              onClick={() => { setQuery('{\n  "operation": "list_namespaces"\n}'); setTimeout(handleExecute, 50); }}
               disabled={!selectedConnection || isLoading}
-              variant="outline"
-              size="sm"
-              className="h-7 text-xs px-2.5"
+              variant="outline" size="sm" className="h-7 text-xs px-2.5"
             >
               List Namespaces
             </Button>
@@ -191,19 +220,12 @@ export function Editor({
           <Button
             onClick={handleExecute}
             disabled={!selectedConnection || !query.trim() || isLoading}
-            size="sm"
-            className="h-7 text-xs px-2.5"
+            size="sm" className="h-7 text-xs px-2.5"
           >
             {isLoading ? (
-              <>
-                <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
-                Running...
-              </>
+              <><Loader2 className="mr-1.5 h-3 w-3 animate-spin" />Running...</>
             ) : (
-              <>
-                {buttonIcon}
-                {buttonLabel}
-              </>
+              <>{buttonIcon}{buttonLabel}</>
             )}
           </Button>
         </div>
@@ -229,14 +251,35 @@ export function Editor({
               quickSuggestions: true,
               parameterHints: { enabled: true },
               hover: { enabled: true },
+              suggest: {
+                showKeywords: true,
+                showSnippets: true,
+                insertMode: "insert" as const,
+              },
             }}
             onMount={(editor, monaco) => {
               editor.addCommand(
                 monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
-                () => {
-                  handleExecute();
-                }
+                () => { handleExecute(); }
               );
+
+              // Register SQL autocomplete if metadata is available
+              if (isSql && metadataRef.current) {
+                if (completionProviderRef.current) completionProviderRef.current.dispose();
+                completionProviderRef.current = registerSqlCompletionProvider(monaco, metadataRef.current);
+              }
+
+              // Watch for metadata to load after mount
+              if (isSql && !metadataRef.current) {
+                const interval = setInterval(() => {
+                  if (metadataRef.current) {
+                    if (completionProviderRef.current) completionProviderRef.current.dispose();
+                    completionProviderRef.current = registerSqlCompletionProvider(monaco, metadataRef.current);
+                    clearInterval(interval);
+                  }
+                }, 500);
+                setTimeout(() => clearInterval(interval), 30000);
+              }
             }}
           />
         ) : (
@@ -244,9 +287,7 @@ export function Editor({
             <div className="text-center">
               <Database className="h-6 w-6 mx-auto mb-1.5 opacity-50" />
               <p className="text-sm">Select a connection to start</p>
-              <p className="text-xs mt-0.5">
-                Connect to a database from the sidebar
-              </p>
+              <p className="text-xs mt-0.5">Connect to a database from the sidebar</p>
             </div>
           </div>
         )}
