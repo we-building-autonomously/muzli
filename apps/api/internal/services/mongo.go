@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -27,23 +28,33 @@ func NewMongoService() *MongoService {
 }
 
 func (s *MongoService) getClient(conn *models.Connection) (*mongo.Client, error) {
-	key := fmt.Sprintf("%s:%d:%s", conn.Host, conn.Port, conn.DatabaseName)
+	var uri string
+	if strings.HasPrefix(conn.Host, "mongodb://") || strings.HasPrefix(conn.Host, "mongodb+srv://") {
+		uri = conn.Host
+	} else if conn.Host != "" {
+		scheme := "mongodb"
+		tlsParam := "false"
+		if conn.SSL {
+			tlsParam = "true"
+		}
+		uri = fmt.Sprintf("%s://%s:%s@%s:%d/%s?tls=%s",
+			scheme, conn.Username, conn.Password, conn.Host, conn.Port, conn.DatabaseName, tlsParam)
+	} else {
+		return nil, fmt.Errorf("MongoDB connection string or host is required")
+	}
 
+	// Default database name if not provided
+	if conn.DatabaseName == "" {
+		conn.DatabaseName = "admin"
+	}
+
+	key := uri
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if client, exists := s.clients[key]; exists {
 		return client, nil
 	}
-
-	scheme := "mongodb"
-	tlsParam := "false"
-	if conn.SSL {
-		tlsParam = "true"
-	}
-
-	uri := fmt.Sprintf("%s://%s:%s@%s:%d/%s?tls=%s",
-		scheme, conn.Username, conn.Password, conn.Host, conn.Port, conn.DatabaseName, tlsParam)
 
 	client, err := mongo.Connect(options.Client().ApplyURI(uri))
 	if err != nil {
