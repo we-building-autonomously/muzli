@@ -122,20 +122,27 @@ export function Editor({
 
     loadDbMetadata(selectedConnection)
       .then((m) => { if (!cancelled) { setMetadata(m); setMetadataLoading(false); } })
-      .catch(() => { if (!cancelled) { setMetadata(null); setMetadataLoading(false); } });
+      .catch(() => {
+        // Even if metadata fails, set empty metadata so keywords still work
+        if (!cancelled) { setMetadata({ schemas: [] }); setMetadataLoading(false); }
+      });
 
     return () => { cancelled = true; };
   }, [selectedConnection?.id, isSql]);
 
-  // Register/re-register completion provider when metadata or monaco changes
+  // Register/re-register completion provider when metadata, monaco, or mode changes
   useEffect(() => {
     if (completionProviderRef.current) {
       completionProviderRef.current.dispose();
       completionProviderRef.current = null;
     }
 
-    if (monacoRef.current && metadata && isSql) {
-      completionProviderRef.current = registerSqlCompletionProvider(monacoRef.current, metadata);
+    if (monacoRef.current && isSql) {
+      // Register with whatever metadata we have (empty = keywords only)
+      completionProviderRef.current = registerSqlCompletionProvider(
+        monacoRef.current,
+        metadata || { schemas: [] }
+      );
     }
 
     return () => {
@@ -271,10 +278,12 @@ export function Editor({
                 () => { handleExecute(); }
               );
 
-              // If metadata already loaded, register immediately
-              if (metadata && isSql) {
+              // Register immediately with whatever metadata we have
+              if (isSql) {
                 if (completionProviderRef.current) completionProviderRef.current.dispose();
-                completionProviderRef.current = registerSqlCompletionProvider(monaco, metadata);
+                completionProviderRef.current = registerSqlCompletionProvider(
+                  monaco, metadata || { schemas: [] }
+                );
               }
             }}
           />
