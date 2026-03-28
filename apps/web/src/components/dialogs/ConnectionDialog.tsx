@@ -130,7 +130,7 @@ const DB_CONFIGS = {
   },
   turbopuffer: {
     label: "Turbopuffer",
-    icon: "🔮",
+    icon: "🐡",
     defaultPort: 443,
     hostLabel: "Region",
     hostPlaceholder: "gcp-us-central1",

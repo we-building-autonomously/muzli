@@ -15,7 +15,7 @@ const DB_ICONS: Record<string, string> = {
   sqlite: "📄",
   redis: "⚡",
   pinecone: "🌲",
-  turbopuffer: "🔮",
+  turbopuffer: "🐡",
 };
 
 // --- Vector DB tree types ---
