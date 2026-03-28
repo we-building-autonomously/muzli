@@ -45,7 +45,7 @@ func (s *TurbopufferService) getClient(conn *models.Connection) *turbopufferClie
 }
 
 func (c *turbopufferClient) do(ctx context.Context, method, path string, body interface{}) (json.RawMessage, error) {
-	url := fmt.Sprintf("https://api.turbopuffer.com/v1%s", path)
+	url := fmt.Sprintf("https://gcp-us-central1.turbopuffer.com/v1%s", path)
 
 	var reqBody io.Reader
 	if body != nil {
@@ -303,20 +303,37 @@ func (s *TurbopufferService) GetDatabases(conn *models.Connection) ([]models.Dat
 		return []models.DatabaseInfo{{Name: conn.DatabaseName, Owner: "turbopuffer"}}, nil
 	}
 
-	var result map[string]interface{}
-	json.Unmarshal(respBody, &result)
-
 	dbs := []models.DatabaseInfo{}
-	if namespaces, ok := result["namespaces"].([]interface{}); ok {
-		for _, ns := range namespaces {
-			nsMap, _ := ns.(map[string]interface{})
-			name, _ := nsMap["id"].(string)
-			if name == "" {
-				name = fmt.Sprintf("%v", ns)
-			}
-			dbs = append(dbs, models.DatabaseInfo{Name: name, Owner: "turbopuffer"})
+
+	// Response can be a JSON array or {"namespaces": [...]}
+	var namespaces []interface{}
+	var resultArr []interface{}
+	if json.Unmarshal(respBody, &resultArr) == nil {
+		namespaces = resultArr
+	} else {
+		var resultMap map[string]interface{}
+		if json.Unmarshal(respBody, &resultMap) == nil {
+			namespaces, _ = resultMap["namespaces"].([]interface{})
 		}
 	}
+
+	for _, ns := range namespaces {
+		switch v := ns.(type) {
+		case map[string]interface{}:
+			name, _ := v["id"].(string)
+			if name == "" {
+				name, _ = v["name"].(string)
+			}
+			if name != "" {
+				dbs = append(dbs, models.DatabaseInfo{Name: name, Owner: "turbopuffer"})
+			}
+		case string:
+			dbs = append(dbs, models.DatabaseInfo{Name: v, Owner: "turbopuffer"})
+		default:
+			dbs = append(dbs, models.DatabaseInfo{Name: fmt.Sprintf("%v", ns), Owner: "turbopuffer"})
+		}
+	}
+
 	if len(dbs) == 0 && conn.DatabaseName != "" {
 		dbs = append(dbs, models.DatabaseInfo{Name: conn.DatabaseName, Owner: "turbopuffer"})
 	}
