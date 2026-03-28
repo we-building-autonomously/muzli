@@ -98,12 +98,12 @@ export function Sidebar({
     if (!tree || tree.loading) return;
 
     const metadata: DbMetadata = {
-      schemas: tree.schemas.map((s) => ({
+      schemas: (tree.schemas || []).map((s) => ({
         name: s.name,
-        tables: s.tables.map((t) => ({
+        tables: (s.tables || []).map((t) => ({
           name: t.name,
           type: t.type,
-          columns: t.columns.map((c) => ({
+          columns: (t.columns || []).map((c) => ({
             name: c.name,
             dataType: c.dataType,
             isPrimaryKey: c.isPrimaryKey,
