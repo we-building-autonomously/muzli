@@ -63,7 +63,7 @@ export function registerSqlCompletionProvider(
   metadata: DbMetadata
 ): { dispose: () => void } {
   const provider = monaco.languages.registerCompletionItemProvider("sql", {
-    triggerCharacters: [".", " ", "\n", "(", ","],
+    triggerCharacters: [".", " ", "\n", "(", ",", "\""],
 
     provideCompletionItems(model: any, position: any) {
       const word = model.getWordUntilPosition(position);
@@ -80,8 +80,8 @@ export function registerSqlCompletionProvider(
       const suggestions: any[] = [];
       let sortBase = 0;
 
-      // Check if cursor is right after a dot (e.g., "public." or "users.")
-      const dotMatch = textBeforeCursor.match(/"?(\w+)"?\.\s*"?(\w*)"?$/);
+      // Check if cursor is right after a dot (e.g., public. or "public"." )
+      const dotMatch = textBeforeCursor.match(/"?(\w+)"?\.\s*"?(\w*)$/);
       if (dotMatch) {
         const prefix = dotMatch[1];
         const afterDotWord = dotMatch[2];
