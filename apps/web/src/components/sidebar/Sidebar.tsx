@@ -1,54 +1,28 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { Plus, Database, Loader2, ChevronRight, ChevronDown, Layers, FolderOpen, Table2, Hash, X } from "lucide-react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Plus, Database, Loader2, ChevronRight, ChevronDown, Layers, FolderOpen, Table2, Hash } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConnectionDialog } from "@/components/dialogs/ConnectionDialog";
 import { apiClient } from "@/api/client";
-import { getConnections, deleteConnection as removeConnection } from "@/lib/connections";
-import type { DatabaseConnection, TableData, VectorSearchContext, ColumnInfo } from "@/types";
+import {
+  getConnections,
+  deleteConnection as removeConnection,
+  getSchemaCache,
+  setSchemaCache,
+  removeSchemaCache,
+} from "@/lib/connections";
+import type { DatabaseConnection, TableData, VectorSearchContext } from "@/types";
 import type { DbMetadata } from "@/lib/sql-autocomplete";
 
 const DB_ICONS: Record<string, string> = {
-  postgres: "🐘",
-  mongodb: "🍃",
-  mysql: "🐬",
-  sqlite: "📄",
-  redis: "⚡",
-  pinecone: "🌲",
-  turbopuffer: "🐡",
+  postgres: "🐘", mongodb: "🍃", mysql: "🐬", sqlite: "📄",
+  redis: "⚡", pinecone: "🌲", turbopuffer: "🐡",
 };
 
-// --- Vector DB tree types ---
 interface IndexInfo {
-  name: string;
-  host: string;
-  metric: string;
-  dimension: number;
-  namespaces: string[];
-  expanded: boolean;
-  loading: boolean;
-}
-
-// --- Relational DB tree types ---
-interface DbSchema {
-  name: string;
-  expanded: boolean;
-  loading: boolean;
-  tables: DbTable[];
-}
-
-interface DbTable {
-  name: string;
-  type: string;
-  expanded: boolean;
-  loading: boolean;
-  columns: ColumnInfo[];
-}
-
-interface DbTree {
-  schemas: DbSchema[];
-  loading: boolean;
+  name: string; host: string; metric: string; dimension: number;
+  namespaces: string[]; expanded: boolean; loading: boolean;
 }
 
 interface SidebarProps {
@@ -62,57 +36,38 @@ interface SidebarProps {
   restoredConnectionId: string | null;
 }
 
+// Expanded state for the tree UI
+interface TreeState {
+  expandedSchemas: Set<string>;
+  expandedTables: Set<string>;
+}
+
 export function Sidebar({
-  selectedConnection,
-  onConnectionSelect,
-  onTableSelect,
-  onVectorContextSelect,
-  onDbTreeChange,
-  isLoading,
-  setIsLoading,
-  restoredConnectionId,
+  selectedConnection, onConnectionSelect, onTableSelect,
+  onVectorContextSelect, onDbTreeChange, isLoading, setIsLoading, restoredConnectionId,
 }: SidebarProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [hasRestored, setHasRestored] = useState(false);
   const [expandedConnections, setExpandedConnections] = useState<Set<string>>(new Set());
   const [connections, setConnections] = useState<DatabaseConnection[]>([]);
 
+  // Schema metadata per connection (from cache or freshly loaded)
+  const [schemaData, setSchemaData] = useState<Record<string, DbMetadata>>({});
+  const [schemaLoading, setSchemaLoading] = useState<Set<string>>(new Set());
+
+  // UI expand state per connection
+  const [treeState, setTreeState] = useState<Record<string, TreeState>>({});
+
   // Vector DB state
   const [vectorTree, setVectorTree] = useState<Record<string, IndexInfo[]>>({});
   const [loadingTree, setLoadingTree] = useState<Set<string>>(new Set());
   const [selectedVectorCtx, setSelectedVectorCtx] = useState<string | null>(null);
 
-  // Relational DB state
-  const [dbTree, setDbTree] = useState<Record<string, DbTree>>({});
+  // Context menu
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; connectionId: string } | null>(null);
 
-  const refreshConnections = useCallback(() => {
-    setConnections(getConnections());
-  }, []);
-
+  const refreshConnections = useCallback(() => { setConnections(getConnections()); }, []);
   useEffect(() => { refreshConnections(); }, [refreshConnections]);
-
-  // Emit DB tree data to parent for autocomplete whenever it changes
-  useEffect(() => {
-    if (!selectedConnection || !onDbTreeChange) return;
-    const tree = dbTree[selectedConnection.id];
-    if (!tree || tree.loading) return;
-
-    const metadata: DbMetadata = {
-      schemas: (tree.schemas || []).map((s) => ({
-        name: s.name,
-        tables: (s.tables || []).map((t) => ({
-          name: t.name,
-          type: t.type,
-          columns: (t.columns || []).map((c) => ({
-            name: c.name,
-            dataType: c.dataType,
-            isPrimaryKey: c.isPrimaryKey,
-          })),
-        })),
-      })),
-    };
-    onDbTreeChange(metadata);
-  }, [dbTree, selectedConnection?.id, onDbTreeChange]);
 
   useEffect(() => {
     if (!hasRestored && restoredConnectionId && connections.length) {
@@ -122,16 +77,33 @@ export function Sidebar({
     }
   }, [connections, restoredConnectionId, hasRestored, onConnectionSelect]);
 
+  // Close context menu on click anywhere
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handler = () => setContextMenu(null);
+    window.addEventListener("click", handler);
+    return () => window.removeEventListener("click", handler);
+  }, [contextMenu]);
+
+  // Emit metadata to editor for autocomplete
+  useEffect(() => {
+    if (!selectedConnection || !onDbTreeChange) return;
+    const data = schemaData[selectedConnection.id];
+    if (data) onDbTreeChange(data);
+  }, [schemaData, selectedConnection?.id, onDbTreeChange]);
+
   const handleConnectionCreated = () => { refreshConnections(); setIsDialogOpen(false); };
 
   const handleDeleteConnection = (connectionId: string) => {
     removeConnection(connectionId);
     refreshConnections();
     if (selectedConnection?.id === connectionId) onConnectionSelect(null);
+    setContextMenu(null);
   };
 
   const isVectorDb = (type: string) => type === "pinecone" || type === "turbopuffer";
   const isRelationalDb = (type: string) => ["postgres", "mysql", "mongodb", "sqlite"].includes(type);
+  const isExpandable = (type: string) => isVectorDb(type) || isRelationalDb(type);
 
   const getSubline = (conn: DatabaseConnection) => {
     if (conn.type === "sqlite") return conn.host;
@@ -140,259 +112,68 @@ export function Sidebar({
     return `${conn.host}:${conn.port}/${conn.database}`;
   };
 
-  // ---- Relational DB tree loading ----
-  const loadSchemas = useCallback(async (conn: DatabaseConnection) => {
-    setDbTree((prev) => ({ ...prev, [conn.id]: { schemas: [], loading: true } }));
+  // --- Load full schema (schemas + tables + columns) ---
+  const loadFullSchema = useCallback(async (conn: DatabaseConnection) => {
+    // Check cache first
+    const cached = getSchemaCache(conn.id);
+    if (cached) {
+      setSchemaData((prev) => ({ ...prev, [conn.id]: cached }));
+      return;
+    }
+
+    setSchemaLoading((prev) => new Set(prev).add(conn.id));
     try {
       const schemas = await apiClient.getSchemas(conn);
-      // Set schemas first
-      setDbTree((prev) => ({
-        ...prev,
-        [conn.id]: {
-          loading: false,
-          schemas: schemas.map((s) => ({ name: s.name, expanded: false, loading: true, tables: [] })),
-        },
-      }));
-      // Auto-load tables for all schemas in parallel (for autocomplete)
-      const tableResults = await Promise.all(
-        schemas.map(async (s) => {
-          const tables = await apiClient.getTables(conn, s.name).catch(() => []);
-          return { schemaName: s.name, tables };
-        })
-      );
-      setDbTree((prev) => {
-        const tree = prev[conn.id];
-        if (!tree) return prev;
-        return {
-          ...prev,
-          [conn.id]: {
-            ...tree,
-            schemas: tree.schemas.map((s) => {
-              const result = tableResults.find((r) => r.schemaName === s.name);
-              if (!result) return { ...s, loading: false };
+      const result: DbMetadata = { schemas: [] };
+
+      await Promise.all(
+        schemas.map(async (schema) => {
+          const tables = await apiClient.getTables(conn, schema.name).catch(() => []);
+          const tablesWithCols = await Promise.all(
+            tables.map(async (table) => {
+              const columns = await apiClient.getColumns(conn, schema.name, table.name).catch(() => []);
               return {
-                ...s,
-                loading: false,
-                tables: result.tables.map((t) => ({
-                  name: t.name,
-                  type: t.type || "table",
-                  expanded: false,
-                  loading: false,
-                  columns: [],
+                name: table.name,
+                type: table.type || "table",
+                columns: columns.map((c) => ({
+                  name: c.name,
+                  dataType: c.dataType,
+                  isPrimaryKey: c.isPrimaryKey,
                 })),
               };
-            }),
-          },
-        };
-      });
-    } catch {
-      setDbTree((prev) => ({ ...prev, [conn.id]: { schemas: [], loading: false } }));
+            })
+          );
+          result.schemas.push({ name: schema.name, tables: tablesWithCols });
+        })
+      );
+
+      setSchemaData((prev) => ({ ...prev, [conn.id]: result }));
+      setSchemaCache(conn.id, result);
+    } catch (err) {
+      console.error("Failed to load schema:", err);
+      setSchemaData((prev) => ({ ...prev, [conn.id]: { schemas: [] } }));
+    } finally {
+      setSchemaLoading((prev) => { const next = new Set(prev); next.delete(conn.id); return next; });
     }
   }, []);
 
-  const loadTables = useCallback(async (conn: DatabaseConnection, schemaName: string) => {
-    setDbTree((prev) => {
-      const tree = prev[conn.id];
-      if (!tree) return prev;
-      return {
-        ...prev,
-        [conn.id]: {
-          ...tree,
-          schemas: tree.schemas.map((s) =>
-            s.name === schemaName ? { ...s, loading: true } : s
-          ),
-        },
-      };
-    });
-    try {
-      const tables = await apiClient.getTables(conn, schemaName);
-      setDbTree((prev) => {
-        const tree = prev[conn.id];
-        if (!tree) return prev;
-        return {
-          ...prev,
-          [conn.id]: {
-            ...tree,
-            schemas: tree.schemas.map((s) =>
-              s.name === schemaName
-                ? {
-                    ...s,
-                    loading: false,
-                    expanded: true,
-                    tables: tables.map((t) => ({
-                      name: t.name,
-                      type: t.type || "table",
-                      expanded: false,
-                      loading: false,
-                      columns: [],
-                    })),
-                  }
-                : s
-            ),
-          },
-        };
-      });
-    } catch {
-      setDbTree((prev) => {
-        const tree = prev[conn.id];
-        if (!tree) return prev;
-        return {
-          ...prev,
-          [conn.id]: {
-            ...tree,
-            schemas: tree.schemas.map((s) =>
-              s.name === schemaName ? { ...s, loading: false, expanded: true } : s
-            ),
-          },
-        };
-      });
-    }
-  }, []);
-
-  const loadColumns = useCallback(async (conn: DatabaseConnection, schemaName: string, tableName: string) => {
-    setDbTree((prev) => {
-      const tree = prev[conn.id];
-      if (!tree) return prev;
-      return {
-        ...prev,
-        [conn.id]: {
-          ...tree,
-          schemas: tree.schemas.map((s) =>
-            s.name === schemaName
-              ? {
-                  ...s,
-                  tables: s.tables.map((t) =>
-                    t.name === tableName ? { ...t, loading: true } : t
-                  ),
-                }
-              : s
-          ),
-        },
-      };
-    });
-    try {
-      const columns = await apiClient.getColumns(conn, schemaName, tableName);
-      setDbTree((prev) => {
-        const tree = prev[conn.id];
-        if (!tree) return prev;
-        return {
-          ...prev,
-          [conn.id]: {
-            ...tree,
-            schemas: tree.schemas.map((s) =>
-              s.name === schemaName
-                ? {
-                    ...s,
-                    tables: s.tables.map((t) =>
-                      t.name === tableName ? { ...t, loading: false, expanded: true, columns } : t
-                    ),
-                  }
-                : s
-            ),
-          },
-        };
-      });
-    } catch {
-      setDbTree((prev) => {
-        const tree = prev[conn.id];
-        if (!tree) return prev;
-        return {
-          ...prev,
-          [conn.id]: {
-            ...tree,
-            schemas: tree.schemas.map((s) =>
-              s.name === schemaName
-                ? {
-                    ...s,
-                    tables: s.tables.map((t) =>
-                      t.name === tableName ? { ...t, loading: false, expanded: true } : t
-                    ),
-                  }
-                : s
-            ),
-          },
-        };
-      });
-    }
-  }, []);
-
-  const toggleSchema = (conn: DatabaseConnection, schemaName: string) => {
-    const tree = dbTree[conn.id];
-    const schema = tree?.schemas.find((s) => s.name === schemaName);
-    if (!schema) return;
-    if (schema.expanded) {
-      setDbTree((prev) => ({
-        ...prev,
-        [conn.id]: {
-          ...prev[conn.id],
-          schemas: prev[conn.id].schemas.map((s) =>
-            s.name === schemaName ? { ...s, expanded: false } : s
-          ),
-        },
-      }));
-    } else if (!schema.tables.length) {
-      loadTables(conn, schemaName);
-    } else {
-      setDbTree((prev) => ({
-        ...prev,
-        [conn.id]: {
-          ...prev[conn.id],
-          schemas: prev[conn.id].schemas.map((s) =>
-            s.name === schemaName ? { ...s, expanded: true } : s
-          ),
-        },
-      }));
-    }
+  const handleRefreshSchema = (conn: DatabaseConnection) => {
+    removeSchemaCache(conn.id);
+    setSchemaData((prev) => { const next = { ...prev }; delete next[conn.id]; return next; });
+    loadFullSchema(conn);
+    setContextMenu(null);
   };
 
-  const toggleTable = (conn: DatabaseConnection, schemaName: string, tableName: string) => {
-    const tree = dbTree[conn.id];
-    const schema = tree?.schemas.find((s) => s.name === schemaName);
-    const table = schema?.tables.find((t) => t.name === tableName);
-    if (!table) return;
-    if (table.expanded) {
-      setDbTree((prev) => ({
-        ...prev,
-        [conn.id]: {
-          ...prev[conn.id],
-          schemas: prev[conn.id].schemas.map((s) =>
-            s.name === schemaName
-              ? { ...s, tables: s.tables.map((t) => t.name === tableName ? { ...t, expanded: false } : t) }
-              : s
-          ),
-        },
-      }));
-    } else if (!table.columns.length) {
-      loadColumns(conn, schemaName, tableName);
-    } else {
-      setDbTree((prev) => ({
-        ...prev,
-        [conn.id]: {
-          ...prev[conn.id],
-          schemas: prev[conn.id].schemas.map((s) =>
-            s.name === schemaName
-              ? { ...s, tables: s.tables.map((t) => t.name === tableName ? { ...t, expanded: true } : t) }
-              : s
-          ),
-        },
-      }));
-    }
-  };
-
-  // ---- Vector DB tree loading ----
+  // --- Vector DB tree ---
   const loadVectorTree = useCallback(async (conn: DatabaseConnection) => {
     if (loadingTree.has(conn.id)) return;
     setLoadingTree((prev) => new Set(prev).add(conn.id));
     try {
       const databases = await apiClient.getDatabases(conn);
       const items: IndexInfo[] = databases.map((db) => ({
-        name: db.name,
-        host: db.collation || "",
-        metric: db.encoding || "",
+        name: db.name, host: db.collation || "", metric: db.encoding || "",
         dimension: parseInt(db.ctypes || "0") || 0,
-        namespaces: [],
-        expanded: false,
-        loading: false,
+        namespaces: [], expanded: false, loading: false,
       }));
       setVectorTree((prev) => ({ ...prev, [conn.id]: items }));
     } catch (err) {
@@ -403,57 +184,75 @@ export function Sidebar({
   }, [loadingTree]);
 
   const loadNamespaces = useCallback(async (conn: DatabaseConnection, indexName: string, indexHost: string) => {
-    setVectorTree((prev) => {
-      const items = prev[conn.id]?.map((idx) => idx.name === indexName ? { ...idx, loading: true } : idx);
-      return { ...prev, [conn.id]: items || [] };
-    });
+    setVectorTree((prev) => ({
+      ...prev,
+      [conn.id]: (prev[conn.id] || []).map((idx) =>
+        idx.name === indexName ? { ...idx, loading: true } : idx
+      ),
+    }));
     try {
       const connWithHost = { ...conn, host: indexHost };
       const schemas = await apiClient.getSchemas(connWithHost);
       const namespaces = schemas.map((s) => s.name || "(default)");
-      setVectorTree((prev) => {
-        const items = prev[conn.id]?.map((idx) =>
+      setVectorTree((prev) => ({
+        ...prev,
+        [conn.id]: (prev[conn.id] || []).map((idx) =>
           idx.name === indexName ? { ...idx, namespaces, expanded: true, loading: false } : idx
-        );
-        return { ...prev, [conn.id]: items || [] };
-      });
+        ),
+      }));
     } catch {
-      setVectorTree((prev) => {
-        const items = prev[conn.id]?.map((idx) =>
+      setVectorTree((prev) => ({
+        ...prev,
+        [conn.id]: (prev[conn.id] || []).map((idx) =>
           idx.name === indexName ? { ...idx, namespaces: ["(default)"], expanded: true, loading: false } : idx
-        );
-        return { ...prev, [conn.id]: items || [] };
-      });
+        ),
+      }));
     }
   }, []);
 
-  // ---- Toggle connection expand ----
   const toggleConnection = (conn: DatabaseConnection) => {
     setExpandedConnections((prev) => {
       const next = new Set(prev);
-      if (next.has(conn.id)) {
-        next.delete(conn.id);
-      } else {
+      if (next.has(conn.id)) { next.delete(conn.id); }
+      else {
         next.add(conn.id);
         if (isVectorDb(conn.type) && !vectorTree[conn.id]) loadVectorTree(conn);
-        if (isRelationalDb(conn.type) && !dbTree[conn.id]) loadSchemas(conn);
+        if (isRelationalDb(conn.type) && !schemaData[conn.id]) loadFullSchema(conn);
       }
       return next;
     });
   };
 
+  const toggleSchema = (connId: string, schemaName: string) => {
+    setTreeState((prev) => {
+      const state = prev[connId] || { expandedSchemas: new Set(), expandedTables: new Set() };
+      const next = new Set(state.expandedSchemas);
+      if (next.has(schemaName)) next.delete(schemaName); else next.add(schemaName);
+      return { ...prev, [connId]: { ...state, expandedSchemas: next } };
+    });
+  };
+
+  const toggleTable = (connId: string, key: string) => {
+    setTreeState((prev) => {
+      const state = prev[connId] || { expandedSchemas: new Set(), expandedTables: new Set() };
+      const next = new Set(state.expandedTables);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return { ...prev, [connId]: { ...state, expandedTables: next } };
+    });
+  };
+
   const toggleVectorIndex = (conn: DatabaseConnection, indexName: string, indexHost: string) => {
-    const items = vectorTree[conn.id];
-    const idx = items?.find((i) => i.name === indexName);
+    const items = vectorTree[conn.id] || [];
+    const idx = items.find((i) => i.name === indexName);
     if (idx?.expanded) {
       setVectorTree((prev) => ({
-        ...prev, [conn.id]: prev[conn.id]?.map((i) => i.name === indexName ? { ...i, expanded: false } : i) || [],
+        ...prev, [conn.id]: (prev[conn.id] || []).map((i) => i.name === indexName ? { ...i, expanded: false } : i),
       }));
     } else if (!idx?.namespaces.length) {
       loadNamespaces(conn, indexName, indexHost);
     } else {
       setVectorTree((prev) => ({
-        ...prev, [conn.id]: prev[conn.id]?.map((i) => i.name === indexName ? { ...i, expanded: true } : i) || [],
+        ...prev, [conn.id]: (prev[conn.id] || []).map((i) => i.name === indexName ? { ...i, expanded: true } : i),
       }));
     }
   };
@@ -474,7 +273,11 @@ export function Sidebar({
     onVectorContextSelect?.({ index: item.name, host: "", namespace: item.name, dimension: item.dimension });
   };
 
-  const isExpandable = (type: string) => isVectorDb(type) || isRelationalDb(type);
+  const handleContextMenu = (e: React.MouseEvent, connectionId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ x: e.clientX, y: e.clientY, connectionId });
+  };
 
   return (
     <div className="h-full flex flex-col border-r">
@@ -496,26 +299,25 @@ export function Sidebar({
           const isPinecone = connection.type === "pinecone";
           const canExpand = isExpandable(connection.type);
           const treeItems = vectorTree[connection.id] || [];
-          const relTree = dbTree[connection.id];
-          const isLoadingItems = loadingTree.has(connection.id) || relTree?.loading;
+          const schema = schemaData[connection.id];
+          const isLoadingSchema = schemaLoading.has(connection.id);
+          const isLoadingIdx = loadingTree.has(connection.id);
           const subline = getSubline(connection);
+          const ts = treeState[connection.id] || { expandedSchemas: new Set(), expandedTables: new Set() };
 
           return (
             <div key={connection.id} className="mb-0.5">
-              {/* Connection row */}
               <div
                 className={`group p-2 rounded-md cursor-pointer transition-colors ${
                   selectedConnection?.id === connection.id ? "bg-accent text-accent-foreground" : "hover:bg-muted"
                 }`}
-                onClick={() => {
-                  onConnectionSelect(connection);
-                  if (canExpand) toggleConnection(connection);
-                }}
+                onClick={() => { onConnectionSelect(connection); if (canExpand) toggleConnection(connection); }}
+                onContextMenu={(e) => handleContextMenu(e, connection.id)}
               >
                 <div className="flex items-center gap-1.5">
                   {canExpand && (
                     <span className="w-4 flex items-center justify-center flex-shrink-0">
-                      {isLoadingItems ? (
+                      {(isLoadingSchema || isLoadingIdx) ? (
                         <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
                       ) : isExpanded ? (
                         <ChevronDown className="h-3 w-3 text-muted-foreground" />
@@ -529,88 +331,67 @@ export function Sidebar({
                     <span className="text-sm font-medium truncate block">{connection.name}</span>
                     {subline && <span className="text-xs text-muted-foreground truncate block">{subline}</span>}
                   </div>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleDeleteConnection(connection.id); }}
-                    className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-opacity flex-shrink-0"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
                   {isLoading && selectedConnection?.id === connection.id && (
                     <Loader2 className="h-3.5 w-3.5 animate-spin flex-shrink-0" />
                   )}
                 </div>
               </div>
 
-              {/* Relational DB tree: Schema → Table → Column */}
-              {isRelational && isExpanded && relTree && (
+              {/* Relational DB tree */}
+              {isRelational && isExpanded && schema && (
                 <div className="ml-4 pl-2 border-l border-border/50">
-                  {relTree.schemas.length === 0 && !relTree.loading && (
+                  {schema.schemas.length === 0 && !isLoadingSchema && (
                     <div className="py-2 px-2 text-[10px] text-muted-foreground">No schemas found</div>
                   )}
-                  {relTree.schemas.map((schema) => (
-                    <div key={schema.name}>
-                      <div
-                        className="flex items-center gap-1.5 py-1.5 px-2 rounded-md cursor-pointer text-xs hover:bg-muted/50"
-                        onClick={(e) => { e.stopPropagation(); toggleSchema(connection, schema.name); }}
-                      >
-                        {schema.loading ? (
-                          <Loader2 className="h-3 w-3 animate-spin text-muted-foreground flex-shrink-0" />
-                        ) : schema.expanded ? (
-                          <ChevronDown className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                        ) : (
-                          <ChevronRight className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                        )}
-                        <FolderOpen className="h-3 w-3 text-amber-400/70 flex-shrink-0" />
-                        <span className="font-medium truncate">{schema.name || "(default)"}</span>
-                      </div>
-
-                      {schema.expanded && (
-                        <div className="ml-3 pl-2 border-l border-border/30">
-                          {schema.tables.length === 0 && !schema.loading && (
-                            <div className="py-1 px-2 text-[10px] text-muted-foreground">No tables</div>
-                          )}
-                          {schema.tables.map((table) => (
-                            <div key={table.name}>
-                              <div
-                                className="flex items-center gap-1.5 py-1 px-2 rounded-md cursor-pointer text-xs hover:bg-muted/50"
-                                onClick={(e) => { e.stopPropagation(); toggleTable(connection, schema.name, table.name); }}
-                              >
-                                {table.loading ? (
-                                  <Loader2 className="h-3 w-3 animate-spin text-muted-foreground flex-shrink-0" />
-                                ) : table.expanded ? (
-                                  <ChevronDown className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                                ) : (
-                                  <ChevronRight className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                                )}
-                                <Table2 className="h-3 w-3 text-blue-400/70 flex-shrink-0" />
-                                <span className="truncate">{table.name}</span>
-                                {table.type !== "table" && (
-                                  <span className="text-[10px] text-muted-foreground ml-auto flex-shrink-0">{table.type}</span>
-                                )}
-                              </div>
-
-                              {table.expanded && (
-                                <div className="ml-3 pl-2 border-l border-border/20">
-                                  {table.columns.map((col) => (
-                                    <div
-                                      key={col.name}
-                                      className="flex items-center gap-1.5 py-0.5 px-2 text-xs text-muted-foreground"
-                                    >
-                                      <Hash className="h-2.5 w-2.5 flex-shrink-0" />
-                                      <span className="truncate">{col.name}</span>
-                                      <span className="text-[10px] ml-auto flex-shrink-0 opacity-60">{col.dataType}</span>
-                                      {col.isPrimaryKey && <span className="text-[9px] text-amber-400 flex-shrink-0">PK</span>}
-                                      {col.isForeignKey && <span className="text-[9px] text-blue-400 flex-shrink-0">FK</span>}
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          ))}
+                  {schema.schemas.map((s) => {
+                    const schemaExpanded = ts.expandedSchemas.has(s.name);
+                    return (
+                      <div key={s.name}>
+                        <div
+                          className="flex items-center gap-1.5 py-1.5 px-2 rounded-md cursor-pointer text-xs hover:bg-muted/50"
+                          onClick={(e) => { e.stopPropagation(); toggleSchema(connection.id, s.name); }}
+                        >
+                          {schemaExpanded ? <ChevronDown className="h-3 w-3 text-muted-foreground flex-shrink-0" /> : <ChevronRight className="h-3 w-3 text-muted-foreground flex-shrink-0" />}
+                          <FolderOpen className="h-3 w-3 text-amber-400/70 flex-shrink-0" />
+                          <span className="font-medium truncate">{s.name || "(default)"}</span>
+                          <span className="text-[10px] text-muted-foreground ml-auto">{s.tables.length}</span>
                         </div>
-                      )}
-                    </div>
-                  ))}
+                        {schemaExpanded && (
+                          <div className="ml-3 pl-2 border-l border-border/30">
+                            {s.tables.map((t) => {
+                              const tableKey = `${s.name}.${t.name}`;
+                              const tableExpanded = ts.expandedTables.has(tableKey);
+                              return (
+                                <div key={t.name}>
+                                  <div
+                                    className="flex items-center gap-1.5 py-1 px-2 rounded-md cursor-pointer text-xs hover:bg-muted/50"
+                                    onClick={(e) => { e.stopPropagation(); toggleTable(connection.id, tableKey); }}
+                                  >
+                                    {tableExpanded ? <ChevronDown className="h-3 w-3 text-muted-foreground flex-shrink-0" /> : <ChevronRight className="h-3 w-3 text-muted-foreground flex-shrink-0" />}
+                                    <Table2 className="h-3 w-3 text-blue-400/70 flex-shrink-0" />
+                                    <span className="truncate">{t.name}</span>
+                                    {t.type !== "table" && <span className="text-[10px] text-muted-foreground ml-auto flex-shrink-0">{t.type}</span>}
+                                  </div>
+                                  {tableExpanded && (
+                                    <div className="ml-3 pl-2 border-l border-border/20">
+                                      {t.columns.map((col) => (
+                                        <div key={col.name} className="flex items-center gap-1.5 py-0.5 px-2 text-xs text-muted-foreground">
+                                          <Hash className="h-2.5 w-2.5 flex-shrink-0" />
+                                          <span className="truncate">{col.name}</span>
+                                          <span className="text-[10px] ml-auto flex-shrink-0 opacity-60">{col.dataType}</span>
+                                          {col.isPrimaryKey && <span className="text-[9px] text-amber-400 flex-shrink-0">PK</span>}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
 
@@ -622,13 +403,12 @@ export function Sidebar({
                       {isPinecone ? "No indexes found" : "No namespaces found"}
                     </div>
                   )}
-
                   {isPinecone
                     ? treeItems.map((idx) => (
                         <div key={idx.name}>
                           <div
                             className={`flex items-center gap-1.5 py-1.5 px-2 rounded-md cursor-pointer text-xs transition-colors ${
-                              selectedVectorCtx === `${connection.id}:${idx.name}:` ? "bg-accent/50 text-accent-foreground" : "hover:bg-muted/50"
+                              selectedVectorCtx === `${connection.id}:${idx.name}:` ? "bg-accent/50" : "hover:bg-muted/50"
                             }`}
                             onClick={(e) => { e.stopPropagation(); toggleVectorIndex(connection, idx.name, idx.host); handleIndexClick(connection.id, idx); }}
                           >
@@ -645,13 +425,9 @@ export function Sidebar({
                                 const nsKey = ns === "(default)" ? "" : ns;
                                 const ctxKey = `${connection.id}:${idx.name}:${nsKey}`;
                                 return (
-                                  <div
-                                    key={ns}
-                                    className={`flex items-center gap-1.5 py-1 px-2 rounded-md cursor-pointer text-xs transition-colors ${
-                                      selectedVectorCtx === ctxKey ? "bg-accent/50 text-accent-foreground" : "hover:bg-muted/50 text-muted-foreground"
-                                    }`}
-                                    onClick={(e) => { e.stopPropagation(); handleNamespaceClick(connection.id, idx, ns); }}
-                                  >
+                                  <div key={ns} className={`flex items-center gap-1.5 py-1 px-2 rounded-md cursor-pointer text-xs transition-colors ${
+                                    selectedVectorCtx === ctxKey ? "bg-accent/50" : "hover:bg-muted/50 text-muted-foreground"
+                                  }`} onClick={(e) => { e.stopPropagation(); handleNamespaceClick(connection.id, idx, ns); }}>
                                     <FolderOpen className="h-3 w-3 text-teal-300/60 flex-shrink-0" />
                                     <span className="truncate">{ns}</span>
                                   </div>
@@ -664,13 +440,9 @@ export function Sidebar({
                     : treeItems.map((item) => {
                         const ctxKey = `${connection.id}::${item.name}`;
                         return (
-                          <div
-                            key={item.name}
-                            className={`flex items-center gap-1.5 py-1.5 px-2 rounded-md cursor-pointer text-xs transition-colors ${
-                              selectedVectorCtx === ctxKey ? "bg-accent/50 text-accent-foreground" : "hover:bg-muted/50 text-muted-foreground"
-                            }`}
-                            onClick={(e) => { e.stopPropagation(); handleTurbopufferNamespaceClick(connection.id, item); }}
-                          >
+                          <div key={item.name} className={`flex items-center gap-1.5 py-1.5 px-2 rounded-md cursor-pointer text-xs transition-colors ${
+                            selectedVectorCtx === ctxKey ? "bg-accent/50" : "hover:bg-muted/50 text-muted-foreground"
+                          }`} onClick={(e) => { e.stopPropagation(); handleTurbopufferNamespaceClick(connection.id, item); }}>
                             <FolderOpen className="h-3 w-3 text-violet-400/60 flex-shrink-0" />
                             <span className="font-medium truncate">{item.name}</span>
                           </div>
@@ -691,6 +463,52 @@ export function Sidebar({
           </div>
         )}
       </div>
+
+      {/* Context menu */}
+      {contextMenu && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setContextMenu(null)} />
+          <div
+            className="fixed z-50 bg-popover border rounded-md shadow-lg py-1 min-w-[140px]"
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+          >
+            {(() => {
+              const conn = connections.find((c) => c.id === contextMenu.connectionId);
+              if (!conn) return null;
+              return (
+                <>
+                  {isRelationalDb(conn.type) && (
+                    <button
+                      className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted transition-colors"
+                      onClick={() => handleRefreshSchema(conn)}
+                    >
+                      Refresh Schema
+                    </button>
+                  )}
+                  {isVectorDb(conn.type) && (
+                    <button
+                      className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted transition-colors"
+                      onClick={() => {
+                        setVectorTree((prev) => { const next = { ...prev }; delete next[conn.id]; return next; });
+                        loadVectorTree(conn);
+                        setContextMenu(null);
+                      }}
+                    >
+                      Refresh
+                    </button>
+                  )}
+                  <button
+                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-destructive/20 text-destructive transition-colors"
+                    onClick={() => handleDeleteConnection(contextMenu.connectionId)}
+                  >
+                    Delete Connection
+                  </button>
+                </>
+              );
+            })()}
+          </div>
+        </>
+      )}
 
       <ConnectionDialog open={isDialogOpen} onOpenChange={setIsDialogOpen} onConnectionCreated={handleConnectionCreated} />
     </div>
