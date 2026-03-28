@@ -145,13 +145,46 @@ export function Sidebar({
     setDbTree((prev) => ({ ...prev, [conn.id]: { schemas: [], loading: true } }));
     try {
       const schemas = await apiClient.getSchemas(conn);
+      // Set schemas first
       setDbTree((prev) => ({
         ...prev,
         [conn.id]: {
           loading: false,
-          schemas: schemas.map((s) => ({ name: s.name, expanded: false, loading: false, tables: [] })),
+          schemas: schemas.map((s) => ({ name: s.name, expanded: false, loading: true, tables: [] })),
         },
       }));
+      // Auto-load tables for all schemas in parallel (for autocomplete)
+      const tableResults = await Promise.all(
+        schemas.map(async (s) => {
+          const tables = await apiClient.getTables(conn, s.name).catch(() => []);
+          return { schemaName: s.name, tables };
+        })
+      );
+      setDbTree((prev) => {
+        const tree = prev[conn.id];
+        if (!tree) return prev;
+        return {
+          ...prev,
+          [conn.id]: {
+            ...tree,
+            schemas: tree.schemas.map((s) => {
+              const result = tableResults.find((r) => r.schemaName === s.name);
+              if (!result) return { ...s, loading: false };
+              return {
+                ...s,
+                loading: false,
+                tables: result.tables.map((t) => ({
+                  name: t.name,
+                  type: t.type || "table",
+                  expanded: false,
+                  loading: false,
+                  columns: [],
+                })),
+              };
+            }),
+          },
+        };
+      });
     } catch {
       setDbTree((prev) => ({ ...prev, [conn.id]: { schemas: [], loading: false } }));
     }
