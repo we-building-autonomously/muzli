@@ -62,6 +62,7 @@ func (c *turbopufferClient) do(ctx context.Context, method, path string, body in
 	}
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
 
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -299,8 +300,7 @@ func (s *TurbopufferService) GetDatabases(conn *models.Connection) ([]models.Dat
 
 	respBody, err := client.do(ctx, "GET", "/namespaces", nil)
 	if err != nil {
-		// Return default
-		return []models.DatabaseInfo{{Name: conn.DatabaseName, Owner: "turbopuffer"}}, nil
+		return nil, fmt.Errorf("failed to list namespaces: %w", err)
 	}
 
 	dbs := []models.DatabaseInfo{}

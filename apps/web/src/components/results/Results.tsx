@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, lazy, Suspense } from "react";
-import { BarChart3, Table, Loader2, AlertCircle, Box, X } from "lucide-react";
+import { BarChart3, Table, Loader2, AlertCircle, Box } from "lucide-react";
 import type { QueryResult, TableData, VectorData } from "@/types";
 import { formatDuration } from "@/lib/utils";
 
@@ -17,39 +17,22 @@ function JsonCell({ value }: { value: unknown }) {
   const preview = JSON.stringify(value);
 
   return (
-    <>
+    <span className="relative">
       <span
         className="text-emerald-400 cursor-pointer hover:underline"
-        onClick={() => setExpanded(true)}
-        title="Click to expand"
+        onClick={() => setExpanded(!expanded)}
       >
         {preview.length > 60 ? preview.slice(0, 60) + "…" : preview}
       </span>
       {expanded && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm"
-          onClick={() => setExpanded(false)}
-        >
-          <div
-            className="bg-popover border rounded-lg shadow-lg max-w-2xl max-h-[80vh] w-full mx-4 flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-3 py-2 border-b">
-              <span className="text-xs font-medium text-muted-foreground">JSON</span>
-              <button
-                onClick={() => setExpanded(false)}
-                className="p-0.5 rounded hover:bg-muted text-muted-foreground"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
-            <pre className="p-3 text-xs overflow-auto flex-1 text-foreground whitespace-pre-wrap">
-              {json}
-            </pre>
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setExpanded(false)} />
+          <div className="absolute left-0 top-full mt-1 z-50 bg-popover border rounded-md shadow-lg max-w-sm max-h-60 overflow-auto">
+            <pre className="p-2 text-[11px] text-foreground whitespace-pre-wrap">{json}</pre>
           </div>
-        </div>
+        </>
       )}
-    </>
+    </span>
   );
 }
 
