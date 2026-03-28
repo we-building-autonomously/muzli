@@ -102,8 +102,8 @@ export function Sidebar({
         const items: IndexInfo[] = databases.map((db) => ({
           name: db.name,
           host: "",
-          metric: "",
-          dimension: 0,
+          metric: db.encoding || "",
+          dimension: parseInt(db.ctypes || "0") || 0,
           namespaces: [],
           expanded: false,
           loading: false,
@@ -230,14 +230,14 @@ export function Sidebar({
   };
 
   // Turbopuffer: click a namespace (top-level item)
-  const handleTurbopufferNamespaceClick = (connectionId: string, namespaceName: string) => {
-    const ctxKey = `${connectionId}::${namespaceName}`;
+  const handleTurbopufferNamespaceClick = (connectionId: string, item: IndexInfo) => {
+    const ctxKey = `${connectionId}::${item.name}`;
     setSelectedVectorCtx(ctxKey);
     onVectorContextSelect?.({
-      index: namespaceName,
+      index: item.name,
       host: "",
-      namespace: namespaceName,
-      dimension: 0,
+      namespace: item.name,
+      dimension: item.dimension,
     });
   };
 
@@ -404,7 +404,7 @@ export function Sidebar({
                             `}
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleTurbopufferNamespaceClick(connection.id, item.name);
+                              handleTurbopufferNamespaceClick(connection.id, item);
                             }}
                           >
                             <FolderOpen className="h-3 w-3 text-violet-400/60 flex-shrink-0" />

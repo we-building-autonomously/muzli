@@ -335,7 +335,19 @@ func (s *TurbopufferService) GetDatabases(conn *models.Connection) ([]models.Dat
 				name, _ = v["name"].(string)
 			}
 			if name != "" {
-				dbs = append(dbs, models.DatabaseInfo{Name: name, Owner: "turbopuffer"})
+				metric, _ := v["distance_metric"].(string)
+				dim := 0
+				if d, ok := v["dimensions"].(float64); ok {
+					dim = int(d)
+				} else if d, ok := v["dimension"].(float64); ok {
+					dim = int(d)
+				}
+				dbs = append(dbs, models.DatabaseInfo{
+					Name:     name,
+					Owner:    "turbopuffer",
+					Encoding: metric,
+					Ctypes:   fmt.Sprintf("%d", dim),
+				})
 			}
 		case string:
 			dbs = append(dbs, models.DatabaseInfo{Name: v, Owner: "turbopuffer"})

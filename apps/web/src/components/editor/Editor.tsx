@@ -43,10 +43,11 @@ function buildPineconeDefault(ctx?: VectorSearchContext | null) {
 
 function buildTurbopufferDefault(ctx?: VectorSearchContext | null) {
   const ns = ctx?.namespace || ctx?.index || "my-namespace";
+  const dim = ctx?.dimension || 3;
   return `{
   "operation": "query",
   "namespace": "${ns}",
-  "vector": [0.1, 0.2, 0.3],
+  "vector": [${Array(dim).fill("0.0").join(", ")}],
   "top_k": 10,
   "include_vectors": true,
   "include_attributes": true
