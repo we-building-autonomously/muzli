@@ -144,12 +144,23 @@ export function registerSqlCompletionProvider(
         });
 
         for (const table of schema.tables) {
+          // Insert fully qualified schema.table for unambiguous queries
+          const qualified = `"${schema.name}"."${table.name}"`;
+          suggestions.push({
+            label: `${schema.name}.${table.name}`,
+            kind: monaco.languages.CompletionItemKind.Struct,
+            insertText: qualified,
+            detail: table.type,
+            sortText: `0_${table.name}`,
+            range,
+          });
+          // Also offer just table name for convenience
           suggestions.push({
             label: table.name,
             kind: monaco.languages.CompletionItemKind.Struct,
             insertText: table.name,
             detail: `${schema.name} · ${table.type}`,
-            sortText: `0_${table.name}`,
+            sortText: `0z_${table.name}`,
             range,
           });
 
