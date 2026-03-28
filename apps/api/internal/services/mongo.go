@@ -352,8 +352,26 @@ func (s *MongoService) GetDatabases(conn *models.Connection) ([]models.DatabaseI
 	return databases, nil
 }
 
-func (s *MongoService) GetSchemas(_ *models.Connection) ([]models.SchemaInfo, error) {
-	return []models.SchemaInfo{}, nil
+func (s *MongoService) GetSchemas(conn *models.Connection) ([]models.SchemaInfo, error) {
+	// Return databases as "schemas" so the sidebar tree shows Databases → Collections
+	client, err := s.getClient(conn)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	result, err := client.ListDatabases(ctx, bson.D{})
+	if err != nil {
+		return nil, err
+	}
+
+	schemas := make([]models.SchemaInfo, len(result.Databases))
+	for i, db := range result.Databases {
+		schemas[i] = models.SchemaInfo{Name: db.Name}
+	}
+	return schemas, nil
 }
 
 func (s *MongoService) GetCollections(conn *models.Connection) ([]models.TableInfo, error) {

@@ -327,7 +327,14 @@ func (s *QueryService) GetSchemas(conn *models.Connection) ([]models.SchemaInfo,
 func (s *QueryService) GetTables(conn *models.Connection, schema string) ([]models.TableInfo, error) {
 	switch conn.Type {
 	case "mongodb":
-		return s.mongoService.GetCollections(conn)
+		// schema param is the database name for MongoDB
+		dbName := schema
+		if dbName == "" {
+			dbName = conn.DatabaseName
+		}
+		connWithDb := *conn
+		connWithDb.DatabaseName = dbName
+		return s.mongoService.GetCollections(&connWithDb)
 	case "mysql":
 		return s.mysqlService.GetTables(conn, schema)
 	case "sqlite":
@@ -390,7 +397,13 @@ func (s *QueryService) GetTables(conn *models.Connection, schema string) ([]mode
 func (s *QueryService) GetColumns(conn *models.Connection, schema, table string) ([]models.ColumnInfo, error) {
 	switch conn.Type {
 	case "mongodb":
-		return s.mongoService.GetColumns(conn, table)
+		dbName := schema
+		if dbName == "" {
+			dbName = conn.DatabaseName
+		}
+		connWithDb := *conn
+		connWithDb.DatabaseName = dbName
+		return s.mongoService.GetColumns(&connWithDb, table)
 	case "mysql":
 		return s.mysqlService.GetColumns(conn, schema, table)
 	case "sqlite":
