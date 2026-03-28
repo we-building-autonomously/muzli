@@ -18,7 +18,7 @@ const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
   ),
 });
 
-const SQL_DEFAULT = "-- Welcome to Muzli!\n-- Write your SQL queries here\n\nSELECT version();";
+const SQL_DEFAULT = "-- Welcome to Muzli!\n-- Write your SQL queries here\n\nSELECT * FROM \nLIMIT 100;";
 
 const MONGO_DEFAULT = `// MongoDB Query
 {
@@ -84,6 +84,7 @@ export function Editor({
   const isSql = !!selectedConnection && !isJson;
 
   const [query, setQuery] = useState(SQL_DEFAULT);
+  const [queryLimit, setQueryLimit] = useState(100);
   const [metadata, setMetadata] = useState<DbMetadata | null>(null);
   const [metadataLoading, setMetadataLoading] = useState(false);
   const completionProviderRef = useRef<{ dispose: () => void } | null>(null);
@@ -148,7 +149,16 @@ export function Editor({
   const executeMutation = useMutation({
     mutationFn: () => {
       if (!selectedConnection) throw new Error("No connection selected");
-      return apiClient.executeQuery(selectedConnection, query);
+      let finalQuery = query;
+      // Auto-inject LIMIT for SQL SELECT queries if not already present
+      if (isSql && queryLimit > 0) {
+        const trimmed = finalQuery.trim().replace(/;+\s*$/, "");
+        const upper = trimmed.toUpperCase();
+        if (upper.startsWith("SELECT") && !upper.includes("LIMIT")) {
+          finalQuery = trimmed + `\nLIMIT ${queryLimit};`;
+        }
+      }
+      return apiClient.executeQuery(selectedConnection, finalQuery);
     },
     onSuccess: (result) => { onQueryExecute(result); setIsLoading(false); },
     onError: (error: Error) => { onError?.(error.message); setIsLoading(false); },
@@ -280,8 +290,36 @@ export function Editor({
       </div>
 
       {selectedConnection && (
-        <div className="px-3 py-1.5 border-t text-xs text-muted-foreground">
-          Press Ctrl+Enter (Cmd+Enter on Mac) to execute
+        <div className="flex items-center justify-between px-3 py-1.5 border-t text-xs text-muted-foreground">
+          <span>Ctrl+Enter to execute</span>
+          {isSql && (
+            <div className="flex items-center gap-1.5">
+              <span>Limit:</span>
+              {[50, 100, 500, 1000].map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setQueryLimit(n)}
+                  className={`px-1.5 py-0.5 rounded text-[10px] transition-colors ${
+                    queryLimit === n
+                      ? "bg-primary/20 text-primary"
+                      : "hover:bg-muted"
+                  }`}
+                >
+                  {n}
+                </button>
+              ))}
+              <button
+                onClick={() => setQueryLimit(0)}
+                className={`px-1.5 py-0.5 rounded text-[10px] transition-colors ${
+                  queryLimit === 0
+                    ? "bg-primary/20 text-primary"
+                    : "hover:bg-muted"
+                }`}
+              >
+                No limit
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

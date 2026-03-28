@@ -1,4 +1,5 @@
-import type { DatabaseConnection, SchemaInfo, TableInfo, ColumnInfo } from "@/types";
+import type { TableInfo, ColumnInfo } from "@/types";
+import type { DatabaseConnection } from "@/types";
 import { apiClient } from "@/api/client";
 
 export interface DbMetadata {
@@ -51,19 +52,10 @@ const SQL_KEYWORDS = [
   "LIMIT", "OFFSET", "UNION", "ALL", "INTERSECT", "EXCEPT", "DISTINCT",
   "COUNT", "SUM", "AVG", "MIN", "MAX", "COALESCE", "NULLIF", "CAST",
   "PRIMARY", "KEY", "FOREIGN", "REFERENCES", "UNIQUE", "CHECK", "DEFAULT",
-  "CONSTRAINT", "NOT NULL", "WITH", "RECURSIVE", "RETURNING", "EXPLAIN",
+  "CONSTRAINT", "WITH", "RECURSIVE", "RETURNING", "EXPLAIN",
   "ANALYZE", "VACUUM", "TRUNCATE", "BEGIN", "COMMIT", "ROLLBACK",
   "GRANT", "REVOKE", "TRIGGER", "FUNCTION", "PROCEDURE", "RETURNS",
   "LANGUAGE", "VOLATILE", "STABLE", "IMMUTABLE", "SECURITY", "DEFINER",
-];
-
-const SQL_TYPES = [
-  "integer", "int", "bigint", "smallint", "serial", "bigserial",
-  "text", "varchar", "char", "character varying",
-  "boolean", "bool", "date", "time", "timestamp", "timestamptz",
-  "numeric", "decimal", "real", "double precision", "float",
-  "json", "jsonb", "uuid", "bytea", "array", "inet", "cidr",
-  "interval", "money", "xml", "point", "line", "polygon",
 ];
 
 export function registerSqlCompletionProvider(
@@ -71,15 +63,9 @@ export function registerSqlCompletionProvider(
   metadata: DbMetadata
 ): { dispose: () => void } {
   const provider = monaco.languages.registerCompletionItemProvider("sql", {
-    triggerCharacters: [".", " ", "("],
-    provideCompletionItems(model: any, position: any) {
-      const textUntilPosition = model.getValueInRange({
-        startLineNumber: 1,
-        startColumn: 1,
-        endLineNumber: position.lineNumber,
-        endColumn: position.column,
-      });
+    triggerCharacters: [".", " ", "\n", "(", ","],
 
+    provideCompletionItems(model: any, position: any) {
       const word = model.getWordUntilPosition(position);
       const range = {
         startLineNumber: position.lineNumber,
@@ -88,36 +74,45 @@ export function registerSqlCompletionProvider(
         endColumn: word.endColumn,
       };
 
+      const lineContent = model.getLineContent(position.lineNumber);
+      const textBeforeCursor = lineContent.substring(0, position.column - 1);
+
       const suggestions: any[] = [];
-      const lastChar = textUntilPosition.slice(-1);
-      const textBefore = textUntilPosition.trimEnd().toLowerCase();
+      let sortBase = 0;
 
-      // After a dot: schema.table or table.column
-      if (lastChar === "." || textUntilPosition.endsWith(".")) {
-        const beforeDot = textUntilPosition.replace(/\.\s*$/, "").split(/\s+/).pop() || "";
-        const cleanName = beforeDot.replace(/"/g, "");
+      // Check if cursor is right after a dot (e.g., "public." or "users.")
+      const dotMatch = textBeforeCursor.match(/(\w+)\.\s*(\w*)$/);
+      if (dotMatch) {
+        const prefix = dotMatch[1];
+        // Adjust range for word after dot
+        const afterDotWord = dotMatch[2];
+        const adjustedRange = {
+          ...range,
+          startColumn: position.column - afterDotWord.length,
+        };
 
-        // Check if it's a schema name → suggest tables
+        // Schema.table
         const schema = metadata.schemas.find(
-          (s) => s.name.toLowerCase() === cleanName.toLowerCase()
+          (s) => s.name.toLowerCase() === prefix.toLowerCase()
         );
         if (schema) {
           for (const table of schema.tables) {
             suggestions.push({
               label: table.name,
-              kind: monaco.languages.CompletionItemKind.Class,
+              kind: monaco.languages.CompletionItemKind.Struct,
               insertText: table.name,
-              detail: table.type,
-              range,
+              detail: `${table.type} in ${schema.name}`,
+              sortText: `0_${table.name}`,
+              range: adjustedRange,
             });
           }
           return { suggestions };
         }
 
-        // Check if it's a table name → suggest columns
+        // Table.column
         for (const s of metadata.schemas) {
           const table = s.tables.find(
-            (t) => t.name.toLowerCase() === cleanName.toLowerCase()
+            (t) => t.name.toLowerCase() === prefix.toLowerCase()
           );
           if (table) {
             for (const col of table.columns) {
@@ -125,89 +120,69 @@ export function registerSqlCompletionProvider(
                 label: col.name,
                 kind: monaco.languages.CompletionItemKind.Field,
                 insertText: col.name,
-                detail: col.dataType + (col.isPrimaryKey ? " (PK)" : ""),
-                range,
+                detail: `${col.dataType}${col.isPrimaryKey ? " PK" : ""}`,
+                sortText: `0_${col.name}`,
+                range: adjustedRange,
               });
             }
             return { suggestions };
           }
         }
-      }
-
-      // After FROM, JOIN, INTO, UPDATE, TABLE: suggest schemas and tables
-      const afterTableKeyword = /\b(from|join|into|update|table|truncate)\s+$/i.test(textBefore) ||
-        /\b(from|join|into|update|table|truncate)\s+\w*$/i.test(textBefore);
-
-      if (afterTableKeyword) {
-        for (const schema of metadata.schemas) {
-          suggestions.push({
-            label: schema.name,
-            kind: monaco.languages.CompletionItemKind.Module,
-            insertText: schema.name,
-            detail: "schema",
-            range,
-          });
-          for (const table of schema.tables) {
-            const qualified = metadata.schemas.length > 1
-              ? `${schema.name}.${table.name}`
-              : table.name;
-            suggestions.push({
-              label: table.name,
-              kind: monaco.languages.CompletionItemKind.Class,
-              insertText: table.name,
-              detail: `${schema.name}.${table.name} (${table.type})`,
-              range,
-            });
-          }
-        }
         return { suggestions };
       }
 
-      // General: keywords + schemas + tables + columns
-      for (const kw of SQL_KEYWORDS) {
-        suggestions.push({
-          label: kw,
-          kind: monaco.languages.CompletionItemKind.Keyword,
-          insertText: kw,
-          range,
-        });
-      }
-
-      for (const t of SQL_TYPES) {
-        suggestions.push({
-          label: t,
-          kind: monaco.languages.CompletionItemKind.TypeParameter,
-          insertText: t,
-          range,
-        });
-      }
-
+      // Always add: schemas, tables, columns with priority ordering
+      // Tables get highest priority (most commonly typed)
       for (const schema of metadata.schemas) {
         suggestions.push({
           label: schema.name,
           kind: monaco.languages.CompletionItemKind.Module,
           insertText: schema.name,
           detail: "schema",
+          sortText: `2_${schema.name}`,
           range,
         });
+
         for (const table of schema.tables) {
           suggestions.push({
             label: table.name,
-            kind: monaco.languages.CompletionItemKind.Class,
+            kind: monaco.languages.CompletionItemKind.Struct,
             insertText: table.name,
-            detail: `${schema.name} (${table.type})`,
+            detail: `${schema.name} · ${table.type}`,
+            sortText: `0_${table.name}`,
             range,
           });
+
           for (const col of table.columns) {
             suggestions.push({
               label: col.name,
               kind: monaco.languages.CompletionItemKind.Field,
               insertText: col.name,
-              detail: `${table.name}.${col.name} (${col.dataType})`,
+              detail: `${table.name} · ${col.dataType}${col.isPrimaryKey ? " PK" : ""}`,
+              sortText: `1_${col.name}`,
               range,
             });
           }
         }
+      }
+
+      // SQL keywords (lower priority)
+      for (const kw of SQL_KEYWORDS) {
+        suggestions.push({
+          label: kw,
+          kind: monaco.languages.CompletionItemKind.Keyword,
+          insertText: kw,
+          sortText: `3_${kw}`,
+          range,
+        });
+        // Also add lowercase version
+        suggestions.push({
+          label: kw.toLowerCase(),
+          kind: monaco.languages.CompletionItemKind.Keyword,
+          insertText: kw.toLowerCase(),
+          sortText: `3_${kw.toLowerCase()}`,
+          range,
+        });
       }
 
       return { suggestions };

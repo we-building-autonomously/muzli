@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, lazy, Suspense } from "react";
-import { BarChart3, Table, Loader2, AlertCircle, Box } from "lucide-react";
+import { BarChart3, Table, Loader2, AlertCircle, Box, Copy, Check } from "lucide-react";
 import type { QueryResult, TableData, VectorData } from "@/types";
 import { formatDuration } from "@/lib/utils";
 
@@ -13,14 +13,24 @@ const VectorVisualization = lazy(() =>
 
 function JsonCell({ value }: { value: unknown }) {
   const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [pos, setPos] = useState({ x: 0, y: 0 });
   const json = JSON.stringify(value, null, 2);
   const preview = JSON.stringify(value);
 
   const handleClick = (e: React.MouseEvent) => {
     const rect = (e.target as HTMLElement).getBoundingClientRect();
-    setPos({ x: rect.left, y: rect.bottom + 4 });
+    const x = Math.min(rect.left, window.innerWidth - 360);
+    const y = rect.bottom + 4 > window.innerHeight - 260 ? rect.top - 260 : rect.bottom + 4;
+    setPos({ x, y });
     setExpanded(!expanded);
+    setCopied(false);
+  };
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(json);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
   };
 
   return (
@@ -35,10 +45,20 @@ function JsonCell({ value }: { value: unknown }) {
         <>
           <div className="fixed inset-0 z-40" onClick={() => setExpanded(false)} />
           <div
-            className="fixed z-50 bg-popover border rounded-md shadow-lg max-w-sm max-h-60 overflow-auto"
+            className="fixed z-50 bg-popover border rounded-md shadow-lg w-[340px] max-h-60 flex flex-col"
             style={{ left: pos.x, top: pos.y }}
           >
-            <pre className="p-2 text-[11px] text-foreground whitespace-pre-wrap">{json}</pre>
+            <div className="flex items-center justify-between px-2 py-1 border-b border-border/50">
+              <span className="text-[10px] text-muted-foreground">JSON</span>
+              <button
+                onClick={handleCopy}
+                className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded hover:bg-muted transition-colors"
+              >
+                {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+                {copied ? "Copied" : "Copy"}
+              </button>
+            </div>
+            <pre className="p-2 text-[11px] text-foreground whitespace-pre-wrap overflow-auto flex-1">{json}</pre>
           </div>
         </>
       )}
