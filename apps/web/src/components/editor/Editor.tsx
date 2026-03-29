@@ -185,6 +185,8 @@ export function Editor({
 
   useEffect(() => {
     if (!selectedConnection) return;
+    // Don't override if tab already has content
+    if (initialQuery) return;
     if (isPinecone) {
       setQuery(buildPineconeDefault(vectorContext));
     } else if (isTurbopuffer) {

@@ -7,6 +7,7 @@ import { apiClient } from "@/api/client";
 import { getConnections } from "@/lib/connections";
 import { getSavedQueries } from "@/lib/saved-queries";
 import { QueryProvider } from "@/components/providers/QueryProvider";
+import { ToastProvider } from "@/components/ui/toast";
 import { Sidebar } from "@/components/sidebar/Sidebar";
 import { Editor } from "@/components/editor/Editor";
 import { Results } from "@/components/results/Results";
@@ -454,7 +455,9 @@ function MuzliApp() {
 export default function Home() {
   return (
     <QueryProvider>
-      <MuzliApp />
+      <ToastProvider>
+        <MuzliApp />
+      </ToastProvider>
     </QueryProvider>
   );
 }

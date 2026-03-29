@@ -75,6 +75,9 @@ export function Sidebar({
   // Connection status (tested on expand)
   const [connectionStatus, setConnectionStatus] = useState<Record<string, "connected" | "error">>({});
 
+  // Editing
+  const [editingConnection, setEditingConnection] = useState<DatabaseConnection | null>(null);
+
   // Context menu
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; connectionId: string } | null>(null);
 
@@ -615,6 +618,12 @@ export function Sidebar({
                   )}
                   <button
                     className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted transition-colors"
+                    onClick={() => { setEditingConnection(conn); setIsDialogOpen(true); setContextMenu(null); }}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted transition-colors"
                     onClick={() => {
                       saveConnection({
                         name: `${conn.name} (copy)`,
@@ -668,7 +677,12 @@ export function Sidebar({
         </>
       )}
 
-      <ConnectionDialog open={isDialogOpen} onOpenChange={setIsDialogOpen} onConnectionCreated={handleConnectionCreated} />
+      <ConnectionDialog
+        open={isDialogOpen}
+        onOpenChange={(open) => { setIsDialogOpen(open); if (!open) setEditingConnection(null); }}
+        onConnectionCreated={() => { handleConnectionCreated(); setEditingConnection(null); }}
+        editConnection={editingConnection}
+      />
     </div>
   );
 }

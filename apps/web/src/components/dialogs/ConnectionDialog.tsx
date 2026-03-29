@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Loader2, CheckCircle, XCircle } from "lucide-react";
 import {
@@ -16,13 +16,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { apiClient } from "@/api/client";
-import { saveConnection } from "@/lib/connections";
-import type { CreateConnectionData } from "@/types";
+import { saveConnection, updateConnection } from "@/lib/connections";
+import type { CreateConnectionData, DatabaseConnection } from "@/types";
 
 interface ConnectionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onConnectionCreated: () => void;
+  editConnection?: DatabaseConnection | null;
 }
 
 const DB_CONFIGS = {
@@ -153,7 +154,10 @@ export function ConnectionDialog({
   open,
   onOpenChange,
   onConnectionCreated,
+  editConnection,
 }: ConnectionDialogProps) {
+  const isEditing = !!editConnection;
+
   const [formData, setFormData] = useState<CreateConnectionData>({
     name: "",
     type: "postgres",
@@ -164,6 +168,23 @@ export function ConnectionDialog({
     password: "",
     ssl: false,
   });
+
+  // Pre-fill form when editing
+  useEffect(() => {
+    if (editConnection && open) {
+      setFormData({
+        name: editConnection.name,
+        type: editConnection.type,
+        host: editConnection.host,
+        port: editConnection.port,
+        database: editConnection.database,
+        username: editConnection.username,
+        password: editConnection.password,
+        ssl: editConnection.ssl,
+      });
+      setTestResult({ status: null, message: "" });
+    }
+  }, [editConnection, open]);
 
   const [testResult, setTestResult] = useState<{
     status: "success" | "error" | null;
@@ -206,7 +227,11 @@ export function ConnectionDialog({
   };
 
   const handleCreate = () => {
-    saveConnection(formData);
+    if (isEditing && editConnection) {
+      updateConnection(editConnection.id, formData);
+    } else {
+      saveConnection(formData);
+    }
     onConnectionCreated();
     setFormData({
       name: "",
@@ -236,7 +261,7 @@ export function ConnectionDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[440px]">
         <DialogHeader className="pb-1">
-          <DialogTitle>New Connection</DialogTitle>
+          <DialogTitle>{isEditing ? "Edit Connection" : "New Connection"}</DialogTitle>
           <DialogDescription>
             Connect to a database or vector store.
           </DialogDescription>
@@ -417,7 +442,7 @@ export function ConnectionDialog({
                   testResult.status !== "success"
                 }
               >
-                Connect
+                {isEditing ? "Save" : "Connect"}
               </Button>
             </div>
           </div>

@@ -33,6 +33,14 @@ export function saveConnection(
   return connection;
 }
 
+export function updateConnection(id: string, data: Partial<Omit<DatabaseConnection, "id" | "createdAt" | "updatedAt">>): void {
+  const connections = getConnections();
+  const idx = connections.findIndex((c) => c.id === id);
+  if (idx === -1) return;
+  connections[idx] = { ...connections[idx], ...data, updatedAt: new Date().toISOString() };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(connections));
+}
+
 export function deleteConnection(id: string): void {
   const connections = getConnections().filter((c) => c.id !== id);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(connections));
