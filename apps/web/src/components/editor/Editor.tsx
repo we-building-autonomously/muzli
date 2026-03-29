@@ -125,6 +125,8 @@ interface EditorProps {
   dbContext?: DbContext | null;
   dbMetadata?: DbMetadata | null;
   isDark?: boolean;
+  initialQuery?: string;
+  onQueryChange?: (query: string) => void;
 }
 
 export function Editor({
@@ -137,6 +139,8 @@ export function Editor({
   dbContext,
   dbMetadata,
   isDark = true,
+  initialQuery,
+  onQueryChange,
 }: EditorProps) {
   const isMongo = selectedConnection?.type === "mongodb";
   const isPinecone = selectedConnection?.type === "pinecone";
@@ -145,7 +149,11 @@ export function Editor({
   const isJson = isMongo || isVectorDb;
   const isSql = !!selectedConnection && !isJson;
 
-  const [query, setQuery] = useState(SQL_DEFAULT);
+  const [query, setQueryInternal] = useState(initialQuery || SQL_DEFAULT);
+  const setQuery = useCallback((q: string) => {
+    setQueryInternal(q);
+    onQueryChange?.(q);
+  }, [onQueryChange]);
   const [queryLimit, setQueryLimit] = useState(100);
   const [showHistory, setShowHistory] = useState(false);
   const [showSaved, setShowSaved] = useState(false);

@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { Plus, X, Sun, Moon, Keyboard } from "lucide-react";
+import { Plus, X, Sun, Moon, Keyboard, Search, Database as DatabaseIcon, Table2, Bookmark as BookmarkIcon } from "lucide-react";
 import { apiClient } from "@/api/client";
+import { getConnections } from "@/lib/connections";
+import { getSavedQueries } from "@/lib/saved-queries";
 import { QueryProvider } from "@/components/providers/QueryProvider";
 import { Sidebar } from "@/components/sidebar/Sidebar";
 import { Editor } from "@/components/editor/Editor";
@@ -16,6 +18,7 @@ const STORAGE_KEY = "muzli:selectedConnectionId";
 interface QueryTab {
   id: string;
   label: string;
+  query: string;
   queryResult: QueryResult | null;
   tableData: TableData | null;
   error: string | null;
@@ -25,16 +28,99 @@ let nextTabId = 1;
 
 function createTab(label?: string): QueryTab {
   const id = `tab-${nextTabId++}`;
-  return { id, label: label || `Query ${nextTabId - 1}`, queryResult: null, tableData: null, error: null };
+  return { id, label: label || `Query ${nextTabId - 1}`, query: "", queryResult: null, tableData: null, error: null };
 }
 
 const SHORTCUTS = [
   { keys: "Ctrl+Enter", action: "Execute query (or run selection)" },
+  { keys: "Ctrl+K", action: "Command palette / global search" },
   { keys: "Ctrl+S", action: "Save current query as bookmark" },
   { keys: "Ctrl+N", action: "New query tab" },
   { keys: "Ctrl+W", action: "Close current tab" },
   { keys: "?", action: "Show keyboard shortcuts" },
 ];
+
+function CommandPaletteResults({
+  query, dbMetadata, selectedConnection, connections, onSelectTable, onSelectConnection, onSelectSavedQuery,
+}: {
+  query: string;
+  dbMetadata: DbMetadata | null;
+  selectedConnection: DatabaseConnection | null;
+  connections: DatabaseConnection[];
+  onSelectTable: (schema: string, table: string) => void;
+  onSelectConnection: (conn: DatabaseConnection) => void;
+  onSelectSavedQuery: (query: string) => void;
+}) {
+  const q = query.toLowerCase().trim();
+
+  const items: { type: string; icon: React.ReactNode; label: string; detail: string; action: () => void }[] = [];
+
+  // Connections
+  connections.forEach((conn) => {
+    if (q && !conn.name.toLowerCase().includes(q) && !conn.type.includes(q)) return;
+    items.push({
+      type: "connection",
+      icon: <DatabaseIcon className="h-3.5 w-3.5 text-blue-400" />,
+      label: conn.name,
+      detail: conn.type,
+      action: () => onSelectConnection(conn),
+    });
+  });
+
+  // Tables from current connection metadata
+  if (dbMetadata) {
+    dbMetadata.schemas.forEach((schema) => {
+      schema.tables.forEach((table) => {
+        if (q && !table.name.toLowerCase().includes(q) && !schema.name.toLowerCase().includes(q)) return;
+        items.push({
+          type: "table",
+          icon: <Table2 className="h-3.5 w-3.5 text-emerald-400" />,
+          label: table.name,
+          detail: schema.name,
+          action: () => onSelectTable(schema.name, table.name),
+        });
+      });
+    });
+  }
+
+  // Saved queries
+  if (selectedConnection) {
+    const saved = getSavedQueries(selectedConnection.id);
+    saved.forEach((sq) => {
+      if (q && !sq.name.toLowerCase().includes(q) && !sq.query.toLowerCase().includes(q)) return;
+      items.push({
+        type: "saved",
+        icon: <BookmarkIcon className="h-3.5 w-3.5 text-amber-400" />,
+        label: sq.name,
+        detail: sq.query.split("\n")[0].slice(0, 50),
+        action: () => onSelectSavedQuery(sq.query),
+      });
+    });
+  }
+
+  if (items.length === 0) {
+    return <div className="p-4 text-center text-xs text-muted-foreground">No results</div>;
+  }
+
+  return (
+    <div className="py-1">
+      {items.slice(0, 20).map((item, i) => (
+        <button
+          key={`${item.type}-${i}`}
+          className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-muted/50 transition-colors"
+          onClick={item.action}
+        >
+          {item.icon}
+          <div className="flex-1 min-w-0">
+            <span className="text-xs font-medium truncate block">{item.label}</span>
+            <span className="text-[10px] text-muted-foreground truncate block">{item.detail}</span>
+          </div>
+          <span className="text-[9px] text-muted-foreground/50 flex-shrink-0">{item.type}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function MuzliApp() {
   const [selectedConnection, setSelectedConnection] = useState<DatabaseConnection | null>(null);
@@ -51,6 +137,8 @@ function MuzliApp() {
   const [activeTabId, setActiveTabId] = useState<string>(tabs[0].id);
 
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [cmdQuery, setCmdQuery] = useState("");
   const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0];
 
   useEffect(() => {
@@ -82,6 +170,14 @@ function MuzliApp() {
       if ((e.metaKey || e.ctrlKey) && e.key === "w" && !e.shiftKey) {
         e.preventDefault();
         if (tabs.length > 1) closeTab(activeTabId);
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setShowCommandPalette((prev) => !prev);
+        setCmdQuery("");
+      }
+      if (e.key === "Escape" && showCommandPalette) {
+        setShowCommandPalette(false);
       }
       if (e.key === "?" && !isMonaco && !(e.target as HTMLElement)?.matches?.("input,textarea")) {
         setShowShortcuts((prev) => !prev);
@@ -201,6 +297,47 @@ function MuzliApp() {
         </>
       )}
 
+      {/* Command palette */}
+      {showCommandPalette && (
+        <>
+          <div className="fixed inset-0 z-50 bg-background/60 backdrop-blur-sm" onClick={() => setShowCommandPalette(false)} />
+          <div className="fixed z-50 top-[20%] left-1/2 -translate-x-1/2 bg-popover border rounded-lg shadow-xl w-[420px] max-h-[400px] flex flex-col">
+            <div className="flex items-center gap-2 px-3 py-2 border-b">
+              <Search className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+              <input
+                autoFocus
+                value={cmdQuery}
+                onChange={(e) => setCmdQuery(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Escape") setShowCommandPalette(false); }}
+                placeholder="Search tables, connections, saved queries..."
+                className="flex-1 bg-transparent text-sm focus:outline-none"
+              />
+              <kbd className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded font-mono">ESC</kbd>
+            </div>
+            <div className="overflow-auto flex-1">
+              <CommandPaletteResults
+                query={cmdQuery}
+                dbMetadata={dbMetadata}
+                selectedConnection={selectedConnection}
+                connections={getConnections()}
+                onSelectTable={(schema, table) => {
+                  setDbContext({ schema, table });
+                  setShowCommandPalette(false);
+                }}
+                onSelectConnection={(conn) => {
+                  handleConnectionSelect(conn);
+                  setShowCommandPalette(false);
+                }}
+                onSelectSavedQuery={(q) => {
+                  // Will be handled by the editor via dbContext or direct state
+                  setShowCommandPalette(false);
+                }}
+              />
+            </div>
+          </div>
+        </>
+      )}
+
       <div className="h-[calc(100vh-2.5rem)]">
         <PanelGroup direction="horizontal">
           <Panel defaultSize={25} minSize={20} maxSize={40}>
@@ -288,6 +425,8 @@ function MuzliApp() {
                       dbContext={dbContext}
                       dbMetadata={dbMetadata}
                       isDark={isDark}
+                      initialQuery={activeTab.query || undefined}
+                      onQueryChange={(q) => updateActiveTab({ query: q })}
                     />
                   </div>
                 </div>

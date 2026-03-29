@@ -13,7 +13,10 @@ import {
   setSchemaCache,
   removeSchemaCache,
   markConnectionUsed,
-  getRecentConnectionIds,
+  getConnectionColor,
+  setConnectionColor,
+  CONNECTION_COLORS,
+  type ConnectionColor,
 } from "@/lib/connections";
 import type { DatabaseConnection, TableData, VectorSearchContext, DbContext } from "@/types";
 import type { DbMetadata } from "@/lib/sql-autocomplete";
@@ -381,15 +384,7 @@ export function Sidebar({
       </div>
 
       <div className="flex-1 overflow-auto p-1.5">
-        {[...connections].sort((a, b) => {
-          const recentIds = getRecentConnectionIds();
-          const ai = recentIds.indexOf(a.id);
-          const bi = recentIds.indexOf(b.id);
-          if (ai !== -1 && bi !== -1) return ai - bi;
-          if (ai !== -1) return -1;
-          if (bi !== -1) return 1;
-          return 0;
-        }).map((connection) => {
+        {connections.map((connection) => {
           const icon = DB_ICONS[connection.type] || "🗄️";
           const isExpanded = expandedConnections.has(connection.id);
           const isVector = isVectorDb(connection.type);
@@ -403,11 +398,17 @@ export function Sidebar({
           const subline = getSubline(connection);
           const ts = treeState[connection.id] || { expandedSchemas: new Set(), expandedTables: new Set() };
           const status = connectionStatus[connection.id];
+          const connColor = getConnectionColor(connection.id);
+          const colorMap: Record<string, string> = {
+            red: "border-l-red-500", orange: "border-l-orange-500", amber: "border-l-amber-500",
+            green: "border-l-green-500", teal: "border-l-teal-500", blue: "border-l-blue-500",
+            purple: "border-l-purple-500", pink: "border-l-pink-500",
+          };
 
           return (
             <div key={connection.id} className="mb-0.5">
               <div
-                className={`group p-2 rounded-md cursor-pointer transition-colors ${
+                className={`group p-2 rounded-md cursor-pointer transition-colors ${connColor ? `border-l-2 ${colorMap[connColor] || ""}` : ""} ${
                   selectedConnection?.id === connection.id ? "bg-accent text-accent-foreground" : "hover:bg-muted"
                 }`}
                 onClick={() => { onConnectionSelect(connection); markConnectionUsed(connection.id); if (canExpand) toggleConnection(connection); }}
@@ -631,6 +632,29 @@ export function Sidebar({
                   >
                     Duplicate
                   </button>
+                  <div className="px-3 py-1.5">
+                    <span className="text-[10px] text-muted-foreground">Color</span>
+                    <div className="flex items-center gap-1 mt-1">
+                      {CONNECTION_COLORS.map((c) => {
+                        const bgMap: Record<string, string> = {
+                          red: "bg-red-500", orange: "bg-orange-500", amber: "bg-amber-500",
+                          green: "bg-green-500", teal: "bg-teal-500", blue: "bg-blue-500",
+                          purple: "bg-purple-500", pink: "bg-pink-500",
+                        };
+                        return (
+                          <button
+                            key={c}
+                            className={`h-3.5 w-3.5 rounded-full ${bgMap[c]} ${getConnectionColor(conn.id) === c ? "ring-2 ring-foreground ring-offset-1 ring-offset-popover" : "hover:scale-125"} transition-all`}
+                            onClick={() => {
+                              setConnectionColor(conn.id, getConnectionColor(conn.id) === c ? null : c);
+                              setContextMenu(null);
+                              refreshConnections(); // force re-render
+                            }}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
                   <button
                     className="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/20 hover:text-red-300 transition-colors"
                     onClick={() => handleDeleteConnection(contextMenu.connectionId)}

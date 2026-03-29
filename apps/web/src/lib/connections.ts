@@ -60,6 +60,33 @@ export function removeSchemaCache(connectionId: string): void {
   } catch {}
 }
 
+const COLOR_KEY = "muzli:connection-colors";
+
+const CONNECTION_COLORS = ["red", "orange", "amber", "green", "teal", "blue", "purple", "pink"] as const;
+export type ConnectionColor = typeof CONNECTION_COLORS[number];
+export { CONNECTION_COLORS };
+
+export function getConnectionColor(connectionId: string): ConnectionColor | null {
+  try {
+    const colors = JSON.parse(localStorage.getItem(COLOR_KEY) || "{}");
+    return colors[connectionId] || null;
+  } catch {
+    return null;
+  }
+}
+
+export function setConnectionColor(connectionId: string, color: ConnectionColor | null): void {
+  try {
+    const colors = JSON.parse(localStorage.getItem(COLOR_KEY) || "{}");
+    if (color) {
+      colors[connectionId] = color;
+    } else {
+      delete colors[connectionId];
+    }
+    localStorage.setItem(COLOR_KEY, JSON.stringify(colors));
+  } catch {}
+}
+
 const RECENT_KEY = "muzli:recent-connections";
 const MAX_RECENT = 3;
 
