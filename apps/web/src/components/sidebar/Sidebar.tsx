@@ -165,6 +165,7 @@ export function Sidebar({
               return {
                 name: table.name,
                 type: table.type || "table",
+                rowCount: table.rowCount,
                 columns: (columns && Array.isArray(columns)) ? columns.map((c) => ({
                   name: c.name,
                   dataType: c.dataType,
@@ -420,7 +421,8 @@ export function Sidebar({
                                     {tableExpanded ? <ChevronDown className="h-3 w-3 text-muted-foreground flex-shrink-0" /> : <ChevronRight className="h-3 w-3 text-muted-foreground flex-shrink-0" />}
                                     <Table2 className="h-3 w-3 text-blue-400/70 flex-shrink-0" />
                                     <span className="truncate">{t.name}</span>
-                                    {t.type !== "table" && <span className="text-[10px] text-muted-foreground ml-auto flex-shrink-0">{t.type}</span>}
+                                    {t.rowCount != null && t.rowCount > 0 && <span className="text-[10px] text-muted-foreground ml-auto flex-shrink-0">{t.rowCount >= 1000 ? `${(t.rowCount / 1000).toFixed(1)}k` : t.rowCount}</span>}
+                                    {t.type !== "table" && <span className="text-[10px] text-muted-foreground flex-shrink-0">{t.type}</span>}
                                   </div>
                                   {tableExpanded && (
                                     <div className="ml-3 pl-2 border-l border-border/20">

@@ -107,8 +107,10 @@ export function Editor({
   const [saved, setSaved] = useState<SavedQuery[]>([]);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [saveName, setSaveName] = useState("");
+  const [hasSelection, setHasSelection] = useState(false);
   const completionProviderRef = useRef<{ dispose: () => void } | null>(null);
   const monacoRef = useRef<any>(null);
+  const editorRef = useRef<any>(null);
 
   // Use metadata from sidebar (passed via props)
   const metadata = dbMetadata || null;
@@ -189,10 +191,22 @@ export function Editor({
     };
   }, [metadata, isSql]);
 
+  const getExecutableQuery = useCallback(() => {
+    // If there's a selection in the editor, use only the selected text
+    if (editorRef.current) {
+      const selection = editorRef.current.getSelection();
+      if (selection && !selection.isEmpty()) {
+        const selectedText = editorRef.current.getModel()?.getValueInRange(selection);
+        if (selectedText?.trim()) return selectedText.trim();
+      }
+    }
+    return query;
+  }, [query]);
+
   const executeMutation = useMutation({
     mutationFn: () => {
       if (!selectedConnection) throw new Error("No connection selected");
-      let finalQuery = query;
+      let finalQuery = getExecutableQuery();
       // Auto-inject LIMIT for SQL SELECT queries if not already present
       if (isSql && queryLimit > 0) {
         const trimmed = finalQuery.trim().replace(/;+\s*$/, "");
@@ -208,7 +222,7 @@ export function Editor({
       setIsLoading(false);
       if (selectedConnection) {
         addQueryToHistory(selectedConnection.id, {
-          query: query.trim(),
+          query: getExecutableQuery(),
           timestamp: new Date().toISOString(),
           executionTime: result.executionTime,
           rowCount: result.rowCount,
@@ -221,7 +235,7 @@ export function Editor({
       setIsLoading(false);
       if (selectedConnection) {
         addQueryToHistory(selectedConnection.id, {
-          query: query.trim(),
+          query: getExecutableQuery(),
           timestamp: new Date().toISOString(),
           error: error.message,
         });
@@ -458,11 +472,18 @@ export function Editor({
             }}
             onMount={(editor, monaco) => {
               monacoRef.current = monaco;
+              editorRef.current = editor;
 
               editor.addCommand(
                 monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
                 () => { handleExecute(); }
               );
+
+              // Track selection changes for "run selected" hint
+              editor.onDidChangeCursorSelection(() => {
+                const sel = editor.getSelection();
+                setHasSelection(!!(sel && !sel.isEmpty()));
+              });
 
               // Register immediately with whatever metadata we have
               if (isSql) {
@@ -486,7 +507,7 @@ export function Editor({
 
       {selectedConnection && (
         <div className="flex items-center justify-between px-3 py-1.5 border-t text-xs text-muted-foreground">
-          <span>Ctrl+Enter to execute</span>
+          <span>{hasSelection ? "Ctrl+Enter to run selection" : "Ctrl+Enter to execute"}</span>
           {isSql && (
             <div className="flex items-center gap-1.5">
               <span>Limit:</span>

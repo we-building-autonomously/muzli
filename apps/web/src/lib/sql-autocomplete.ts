@@ -8,6 +8,7 @@ export interface DbMetadata {
     tables: {
       name: string;
       type: string;
+      rowCount?: number;
       columns: { name: string; dataType: string; isPrimaryKey: boolean }[];
     }[];
   }[];

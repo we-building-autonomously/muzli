@@ -357,9 +357,11 @@ func (s *QueryService) GetTables(conn *models.Connection, schema string) ([]mode
 
 	query := `
 		SELECT table_name, table_schema, table_type,
-			   COALESCE(pg_catalog.pg_get_userbyid(c.relowner), '') as owner
+			   COALESCE(pg_catalog.pg_get_userbyid(c.relowner), '') as owner,
+			   COALESCE(c.reltuples::bigint, 0) as row_count
 		FROM information_schema.tables t
 		LEFT JOIN pg_catalog.pg_class c ON c.relname = t.table_name
+			AND c.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = t.table_schema)
 		WHERE table_schema = $1
 		ORDER BY table_name
 	`
@@ -374,9 +376,13 @@ func (s *QueryService) GetTables(conn *models.Connection, schema string) ([]mode
 	for rows.Next() {
 		var table models.TableInfo
 		var tableType string
-		err := rows.Scan(&table.Name, &table.Schema, &tableType, &table.Owner)
+		var rowCount int
+		err := rows.Scan(&table.Name, &table.Schema, &tableType, &table.Owner, &rowCount)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan table: %w", err)
+		}
+		if rowCount > 0 {
+			table.RowCount = &rowCount
 		}
 
 		switch strings.ToLower(tableType) {

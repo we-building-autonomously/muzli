@@ -202,7 +202,7 @@ func (s *MySQLService) GetTables(conn *models.Connection, schema string) ([]mode
 		return nil, err
 	}
 
-	query := `SELECT TABLE_NAME, TABLE_SCHEMA, TABLE_TYPE
+	query := `SELECT TABLE_NAME, TABLE_SCHEMA, TABLE_TYPE, COALESCE(TABLE_ROWS, 0)
 		FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? ORDER BY TABLE_NAME`
 
 	rows, err := db.Query(query, schema)
@@ -215,8 +215,12 @@ func (s *MySQLService) GetTables(conn *models.Connection, schema string) ([]mode
 	for rows.Next() {
 		var t models.TableInfo
 		var tableType string
-		if err := rows.Scan(&t.Name, &t.Schema, &tableType); err != nil {
+		var rowCount int
+		if err := rows.Scan(&t.Name, &t.Schema, &tableType, &rowCount); err != nil {
 			return nil, err
+		}
+		if rowCount > 0 {
+			t.RowCount = &rowCount
 		}
 		switch strings.ToUpper(tableType) {
 		case "BASE TABLE":

@@ -387,32 +387,39 @@ export function Results({ queryResult, tableData, isLoading, connectionType, err
         ) : (
           <div className="min-w-full">
             <table className="w-full text-xs">
-              <thead className="bg-muted sticky top-0">
+              <thead className="bg-muted sticky top-0 z-[1]">
                 <tr>
-                  {columns.map((column, index) => (
-                    <th
-                      key={index}
-                      className="px-3 py-1.5 text-left font-medium text-xs cursor-pointer hover:bg-muted/80 select-none"
-                      onClick={() => handleSort(column.name)}
-                    >
-                      <div className="flex items-center gap-1.5">
-                        <span>{column.name}</span>
-                        <span className="text-[10px] text-muted-foreground">
-                          {column.type}
-                        </span>
-                        {sortCol === column.name && (
-                          sortDir === "asc"
-                            ? <ArrowUp className="h-3 w-3 text-primary flex-shrink-0" />
-                            : <ArrowDown className="h-3 w-3 text-primary flex-shrink-0" />
-                        )}
-                      </div>
-                    </th>
-                  ))}
+                  <th className="px-2 py-1.5 text-right font-medium text-[10px] text-muted-foreground w-10">#</th>
+                  {columns.map((column, index) => {
+                    const nullCount = rows.filter((r) => r[column.name] === null || r[column.name] === undefined).length;
+                    const distinctCount = new Set(rows.map((r) => JSON.stringify(r[column.name]))).size;
+                    return (
+                      <th
+                        key={index}
+                        className="px-3 py-1.5 text-left font-medium text-xs cursor-pointer hover:bg-muted/80 select-none"
+                        onClick={() => handleSort(column.name)}
+                        title={`${distinctCount} distinct, ${nullCount} null`}
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span>{column.name}</span>
+                          <span className="text-[10px] text-muted-foreground">
+                            {column.type}
+                          </span>
+                          {sortCol === column.name && (
+                            sortDir === "asc"
+                              ? <ArrowUp className="h-3 w-3 text-primary flex-shrink-0" />
+                              : <ArrowDown className="h-3 w-3 text-primary flex-shrink-0" />
+                          )}
+                        </div>
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>
                 {rows.map((row, rowIndex) => (
                   <tr key={rowIndex} className="border-t hover:bg-muted/50">
+                    <td className="px-2 py-1 text-right text-[10px] text-muted-foreground/50 select-none">{rowIndex + 1}</td>
                     {columns.map((column, colIndex) => {
                       const value = row[column.name];
                       return (
