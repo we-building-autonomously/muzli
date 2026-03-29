@@ -2,11 +2,13 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Play, Loader2, Database, Search } from "lucide-react";
+import { Play, Loader2, Database, Search, History, X } from "lucide-react";
 import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
 import { apiClient } from "@/api/client";
 import { registerSqlCompletionProvider, type DbMetadata } from "@/lib/sql-autocomplete";
+import { getQueryHistory, addQueryToHistory, clearQueryHistory, type QueryHistoryEntry } from "@/lib/query-history";
+import { formatDuration } from "@/lib/utils";
 import type { DatabaseConnection, QueryResult, VectorSearchContext, DbContext } from "@/types";
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
@@ -98,11 +100,23 @@ export function Editor({
 
   const [query, setQuery] = useState(SQL_DEFAULT);
   const [queryLimit, setQueryLimit] = useState(100);
+  const [showHistory, setShowHistory] = useState(false);
+  const [history, setHistory] = useState<QueryHistoryEntry[]>([]);
   const completionProviderRef = useRef<{ dispose: () => void } | null>(null);
   const monacoRef = useRef<any>(null);
 
   // Use metadata from sidebar (passed via props)
   const metadata = dbMetadata || null;
+
+  // Load history when connection changes
+  useEffect(() => {
+    if (selectedConnection) {
+      setHistory(getQueryHistory(selectedConnection.id));
+    } else {
+      setHistory([]);
+    }
+    setShowHistory(false);
+  }, [selectedConnection?.id]);
 
   useEffect(() => {
     if (!selectedConnection) return;
@@ -181,8 +195,31 @@ export function Editor({
       }
       return apiClient.executeQuery(selectedConnection, finalQuery);
     },
-    onSuccess: (result) => { onQueryExecute(result); setIsLoading(false); },
-    onError: (error: Error) => { onError?.(error.message); setIsLoading(false); },
+    onSuccess: (result) => {
+      onQueryExecute(result);
+      setIsLoading(false);
+      if (selectedConnection) {
+        addQueryToHistory(selectedConnection.id, {
+          query: query.trim(),
+          timestamp: new Date().toISOString(),
+          executionTime: result.executionTime,
+          rowCount: result.rowCount,
+        });
+        setHistory(getQueryHistory(selectedConnection.id));
+      }
+    },
+    onError: (error: Error) => {
+      onError?.(error.message);
+      setIsLoading(false);
+      if (selectedConnection) {
+        addQueryToHistory(selectedConnection.id, {
+          query: query.trim(),
+          timestamp: new Date().toISOString(),
+          error: error.message,
+        });
+        setHistory(getQueryHistory(selectedConnection.id));
+      }
+    },
   });
 
   const handleExecute = useCallback(() => {
@@ -220,6 +257,17 @@ export function Editor({
         </div>
 
         <div className="flex items-center gap-1.5">
+          {selectedConnection && history.length > 0 && (
+            <Button
+              onClick={() => setShowHistory(!showHistory)}
+              variant={showHistory ? "default" : "outline"}
+              size="sm" className="h-7 text-xs px-2.5"
+            >
+              <History className="mr-1 h-3 w-3" />
+              History
+              <span className="ml-1 text-[10px] opacity-70">{history.length}</span>
+            </Button>
+          )}
           {isPinecone && (
             <Button
               onClick={() => { setQuery(PINECONE_LIST_INDEXES); setTimeout(handleExecute, 50); }}
@@ -248,7 +296,40 @@ export function Editor({
         </div>
       </div>
 
-      <div className="flex-1">
+      <div className="flex-1 relative">
+        {showHistory && selectedConnection && (
+          <div className="absolute inset-0 z-10 bg-background/95 backdrop-blur-sm overflow-auto">
+            <div className="flex items-center justify-between px-3 py-2 border-b sticky top-0 bg-background/95 backdrop-blur-sm">
+              <span className="text-xs font-medium">Query History</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => { clearQueryHistory(selectedConnection.id); setHistory([]); setShowHistory(false); }}
+                  className="text-[10px] text-muted-foreground hover:text-red-400 transition-colors"
+                >Clear all</button>
+                <button onClick={() => setShowHistory(false)}>
+                  <X className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
+                </button>
+              </div>
+            </div>
+            <div className="divide-y divide-border/50">
+              {history.map((entry, i) => (
+                <button
+                  key={i}
+                  className="w-full text-left px-3 py-2 hover:bg-muted/50 transition-colors group"
+                  onClick={() => { setQuery(entry.query); setShowHistory(false); }}
+                >
+                  <pre className="text-xs font-mono truncate text-foreground/80 group-hover:text-foreground">{entry.query.split("\n").map(l => l.trim()).filter(Boolean).join(" ").slice(0, 120)}</pre>
+                  <div className="flex items-center gap-2 mt-1 text-[10px] text-muted-foreground">
+                    <span>{new Date(entry.timestamp).toLocaleString()}</span>
+                    {entry.executionTime != null && <span>{formatDuration(entry.executionTime)}</span>}
+                    {entry.rowCount != null && <span>{entry.rowCount} rows</span>}
+                    {entry.error && <span className="text-red-400">Error</span>}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {selectedConnection ? (
           <MonacoEditor
             height="100%"

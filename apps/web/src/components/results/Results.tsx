@@ -1,9 +1,34 @@
 "use client";
 
 import { useState, useMemo, lazy, Suspense } from "react";
-import { BarChart3, Table, Loader2, AlertCircle, Box, Copy, Check } from "lucide-react";
+import { BarChart3, Table, Loader2, AlertCircle, Box, Copy, Check, Download } from "lucide-react";
 import type { QueryResult, TableData, VectorData } from "@/types";
 import { formatDuration } from "@/lib/utils";
+
+function exportCsv(columns: { name: string }[], rows: Record<string, unknown>[]) {
+  const escape = (v: unknown) => {
+    if (v === null || v === undefined) return "";
+    const s = typeof v === "object" ? JSON.stringify(v) : String(v);
+    return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const header = columns.map((c) => escape(c.name)).join(",");
+  const body = rows.map((row) => columns.map((c) => escape(row[c.name])).join(",")).join("\n");
+  downloadFile(`${header}\n${body}`, "results.csv", "text/csv");
+}
+
+function exportJson(rows: Record<string, unknown>[]) {
+  downloadFile(JSON.stringify(rows, null, 2), "results.json", "application/json");
+}
+
+function downloadFile(content: string, filename: string, mimeType: string) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 const VectorVisualization = lazy(() =>
   import("@/components/VectorVisualization").then((m) => ({
@@ -185,6 +210,24 @@ export function Results({ queryResult, tableData, isLoading, connectionType, err
             <span>
               p.{tableData.page}/{Math.ceil(tableData.totalRows / tableData.pageSize)}
             </span>
+          )}
+          {rows.length > 0 && (
+            <div className="flex items-center gap-0.5 ml-1 border-l pl-2 border-border/50">
+              <button
+                onClick={() => exportCsv(columns, rows)}
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] hover:bg-muted transition-colors"
+                title="Export as CSV"
+              >
+                <Download className="h-3 w-3" />CSV
+              </button>
+              <button
+                onClick={() => exportJson(rows)}
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] hover:bg-muted transition-colors"
+                title="Export as JSON"
+              >
+                <Download className="h-3 w-3" />JSON
+              </button>
+            </div>
           )}
         </div>
       </div>

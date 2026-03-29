@@ -64,6 +64,9 @@ export function Sidebar({
   const [loadingTree, setLoadingTree] = useState<Set<string>>(new Set());
   const [selectedVectorCtx, setSelectedVectorCtx] = useState<string | null>(null);
 
+  // Connection status (tested on expand)
+  const [connectionStatus, setConnectionStatus] = useState<Record<string, "connected" | "error">>({});
+
   // Context menu
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; connectionId: string } | null>(null);
 
@@ -237,6 +240,18 @@ export function Sidebar({
     }
   }, []);
 
+  const testConnectionStatus = useCallback(async (conn: DatabaseConnection) => {
+    try {
+      const result = await apiClient.testConnection({
+        type: conn.type, host: conn.host, port: conn.port,
+        database: conn.database, username: conn.username, password: conn.password, ssl: conn.ssl,
+      });
+      setConnectionStatus((prev) => ({ ...prev, [conn.id]: result.success ? "connected" : "error" }));
+    } catch {
+      setConnectionStatus((prev) => ({ ...prev, [conn.id]: "error" }));
+    }
+  }, []);
+
   const toggleConnection = (conn: DatabaseConnection) => {
     setExpandedConnections((prev) => {
       const next = new Set(prev);
@@ -245,6 +260,8 @@ export function Sidebar({
         next.add(conn.id);
         if (isVectorDb(conn.type) && !vectorTree[conn.id]) loadVectorTree(conn);
         if (isRelationalDb(conn.type) && !schemaData[conn.id]) loadFullSchema(conn);
+        // Test connection status on first expand
+        if (!connectionStatus[conn.id]) testConnectionStatus(conn);
       }
       return next;
     });
@@ -331,6 +348,7 @@ export function Sidebar({
           const isLoadingIdx = loadingTree.has(connection.id);
           const subline = getSubline(connection);
           const ts = treeState[connection.id] || { expandedSchemas: new Set(), expandedTables: new Set() };
+          const status = connectionStatus[connection.id];
 
           return (
             <div key={connection.id} className="mb-0.5">
@@ -355,7 +373,12 @@ export function Sidebar({
                   )}
                   <span className="text-sm flex-shrink-0">{icon}</span>
                   <div className="flex-1 min-w-0">
-                    <span className="text-sm font-medium truncate block">{connection.name}</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-sm font-medium truncate">{connection.name}</span>
+                      {status && (
+                        <span className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${status === "connected" ? "bg-emerald-400" : "bg-red-400"}`} title={status === "connected" ? "Connected" : "Connection error"} />
+                      )}
+                    </div>
                     {subline && <span className="text-xs text-muted-foreground truncate block">{subline}</span>}
                   </div>
                   {isLoading && selectedConnection?.id === connection.id && (
