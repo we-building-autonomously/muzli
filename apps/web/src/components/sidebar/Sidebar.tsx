@@ -7,6 +7,7 @@ import { ConnectionDialog } from "@/components/dialogs/ConnectionDialog";
 import { apiClient } from "@/api/client";
 import {
   getConnections,
+  saveConnection,
   deleteConnection as removeConnection,
   getSchemaCache,
   setSchemaCache,
@@ -549,6 +550,25 @@ export function Sidebar({
                       Refresh
                     </button>
                   )}
+                  <button
+                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted transition-colors"
+                    onClick={() => {
+                      saveConnection({
+                        name: `${conn.name} (copy)`,
+                        type: conn.type,
+                        host: conn.host,
+                        port: conn.port,
+                        database: conn.database,
+                        username: conn.username,
+                        password: conn.password,
+                        ssl: conn.ssl,
+                      });
+                      refreshConnections();
+                      setContextMenu(null);
+                    }}
+                  >
+                    Duplicate
+                  </button>
                   <button
                     className="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/20 hover:text-red-300 transition-colors"
                     onClick={() => handleDeleteConnection(contextMenu.connectionId)}

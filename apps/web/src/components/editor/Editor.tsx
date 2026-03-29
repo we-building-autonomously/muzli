@@ -80,6 +80,7 @@ interface EditorProps {
   vectorContext?: VectorSearchContext | null;
   dbContext?: DbContext | null;
   dbMetadata?: DbMetadata | null;
+  isDark?: boolean;
 }
 
 export function Editor({
@@ -91,6 +92,7 @@ export function Editor({
   vectorContext,
   dbContext,
   dbMetadata,
+  isDark = true,
 }: EditorProps) {
   const isMongo = selectedConnection?.type === "mongodb";
   const isPinecone = selectedConnection?.type === "pinecone";
@@ -445,7 +447,7 @@ export function Editor({
           <MonacoEditor
             height="100%"
             language={isJson ? "json" : "sql"}
-            theme="vs-dark"
+            theme={isDark ? "vs-dark" : "vs"}
             value={query}
             onChange={(value) => setQuery(value || "")}
             options={{
@@ -507,7 +509,31 @@ export function Editor({
 
       {selectedConnection && (
         <div className="flex items-center justify-between px-3 py-1.5 border-t text-xs text-muted-foreground">
-          <span>{hasSelection ? "Ctrl+Enter to run selection" : "Ctrl+Enter to execute"}</span>
+          <div className="flex items-center gap-3">
+            <span>{hasSelection ? "Ctrl+Enter to run selection" : "Ctrl+Enter to execute"}</span>
+            {(() => {
+              const times = history
+                .filter((h) => h.executionTime != null)
+                .slice(0, 10)
+                .map((h) => h.executionTime!)
+                .reverse();
+              if (times.length < 2) return null;
+              const max = Math.max(...times);
+              const barH = 12;
+              return (
+                <div className="flex items-end gap-px" title={`Last ${times.length} queries`}>
+                  {times.map((t, i) => (
+                    <div
+                      key={i}
+                      className="w-1 bg-primary/40 rounded-sm"
+                      style={{ height: Math.max(2, (t / max) * barH) }}
+                      title={formatDuration(t)}
+                    />
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
           {isSql && (
             <div className="flex items-center gap-1.5">
               <span>Limit:</span>

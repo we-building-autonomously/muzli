@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { Plus, X } from "lucide-react";
+import { Plus, X, Sun, Moon, Keyboard } from "lucide-react";
 import { QueryProvider } from "@/components/providers/QueryProvider";
 import { Sidebar } from "@/components/sidebar/Sidebar";
 import { Editor } from "@/components/editor/Editor";
@@ -27,6 +27,14 @@ function createTab(label?: string): QueryTab {
   return { id, label: label || `Query ${nextTabId - 1}`, queryResult: null, tableData: null, error: null };
 }
 
+const SHORTCUTS = [
+  { keys: "Ctrl+Enter", action: "Execute query (or run selection)" },
+  { keys: "Ctrl+S", action: "Save current query as bookmark" },
+  { keys: "Ctrl+N", action: "New query tab" },
+  { keys: "Ctrl+W", action: "Close current tab" },
+  { keys: "?", action: "Show keyboard shortcuts" },
+];
+
 function MuzliApp() {
   const [selectedConnection, setSelectedConnection] = useState<DatabaseConnection | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -34,6 +42,8 @@ function MuzliApp() {
   const [vectorContext, setVectorContext] = useState<VectorSearchContext | null>(null);
   const [dbContext, setDbContext] = useState<DbContext | null>(null);
   const [dbMetadata, setDbMetadata] = useState<DbMetadata | null>(null);
+  const [isDark, setIsDark] = useState(true);
+  const [showShortcuts, setShowShortcuts] = useState(false);
 
   // Tabs
   const [tabs, setTabs] = useState<QueryTab[]>(() => [createTab()]);
@@ -45,8 +55,39 @@ function MuzliApp() {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) setRestoredConnectionId(stored);
+      const theme = localStorage.getItem("muzli:theme");
+      setIsDark(theme !== "light");
     } catch {}
   }, []);
+
+  const toggleTheme = useCallback(() => {
+    setIsDark((prev) => {
+      const next = !prev;
+      document.documentElement.classList.toggle("dark", next);
+      localStorage.setItem("muzli:theme", next ? "dark" : "light");
+      return next;
+    });
+  }, []);
+
+  // Global keyboard shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const isMonaco = (e.target as HTMLElement)?.closest?.(".monaco-editor");
+      if ((e.metaKey || e.ctrlKey) && e.key === "n" && !e.shiftKey) {
+        e.preventDefault();
+        addTab();
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "w" && !e.shiftKey) {
+        e.preventDefault();
+        if (tabs.length > 1) closeTab(activeTabId);
+      }
+      if (e.key === "?" && !isMonaco && !(e.target as HTMLElement)?.matches?.("input,textarea")) {
+        setShowShortcuts((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [tabs, activeTabId]);
 
   const handleConnectionSelect = (connection: DatabaseConnection | null) => {
     setSelectedConnection(connection);
@@ -100,10 +141,49 @@ function MuzliApp() {
   return (
     <div className="h-screen bg-background text-foreground">
       <div className="border-b">
-        <div className="flex h-10 items-center px-3">
+        <div className="flex h-10 items-center justify-between px-3">
           <h1 className="text-sm font-bold">Muzli</h1>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setShowShortcuts(true)}
+              className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              title="Keyboard shortcuts (?)"
+            >
+              <Keyboard className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={toggleTheme}
+              className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+            >
+              {isDark ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Keyboard shortcuts modal */}
+      {showShortcuts && (
+        <>
+          <div className="fixed inset-0 z-50 bg-background/60 backdrop-blur-sm" onClick={() => setShowShortcuts(false)} />
+          <div className="fixed z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-popover border rounded-lg shadow-xl w-80 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium">Keyboard Shortcuts</h3>
+              <button onClick={() => setShowShortcuts(false)}>
+                <X className="h-4 w-4 text-muted-foreground hover:text-foreground" />
+              </button>
+            </div>
+            <div className="space-y-2">
+              {SHORTCUTS.map((s) => (
+                <div key={s.keys} className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">{s.action}</span>
+                  <kbd className="px-1.5 py-0.5 bg-muted rounded text-[10px] font-mono">{s.keys}</kbd>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
 
       <div className="h-[calc(100vh-2.5rem)]">
         <PanelGroup direction="horizontal">
@@ -171,6 +251,7 @@ function MuzliApp() {
                       vectorContext={vectorContext}
                       dbContext={dbContext}
                       dbMetadata={dbMetadata}
+                      isDark={isDark}
                     />
                   </div>
                 </div>

@@ -131,6 +131,7 @@ export function Results({ queryResult, tableData, isLoading, connectionType, err
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
+  const [rowMenu, setRowMenu] = useState<{ x: number; y: number; row: Record<string, unknown> } | null>(null);
   const data = queryResult || tableData;
 
   const isVectorDb = connectionType === "pinecone" || connectionType === "turbopuffer";
@@ -418,7 +419,14 @@ export function Results({ queryResult, tableData, isLoading, connectionType, err
               </thead>
               <tbody>
                 {rows.map((row, rowIndex) => (
-                  <tr key={rowIndex} className="border-t hover:bg-muted/50">
+                  <tr
+                    key={rowIndex}
+                    className="border-t hover:bg-muted/50"
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setRowMenu({ x: e.clientX, y: e.clientY, row });
+                    }}
+                  >
                     <td className="px-2 py-1 text-right text-[10px] text-muted-foreground/50 select-none">{rowIndex + 1}</td>
                     {columns.map((column, colIndex) => {
                       const value = row[column.name];
@@ -455,6 +463,57 @@ export function Results({ queryResult, tableData, isLoading, connectionType, err
           </div>
         )}
       </div>
+
+      {/* Row context menu */}
+      {rowMenu && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setRowMenu(null)} />
+          <div
+            className="fixed z-50 bg-popover border rounded-md shadow-lg py-1 min-w-[160px]"
+            style={{ left: rowMenu.x, top: rowMenu.y }}
+          >
+            <button
+              className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted transition-colors flex items-center gap-2"
+              onClick={() => {
+                navigator.clipboard.writeText(JSON.stringify(rowMenu.row, null, 2));
+                setRowMenu(null);
+              }}
+            >
+              <Copy className="h-3 w-3" />Copy as JSON
+            </button>
+            <button
+              className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted transition-colors flex items-center gap-2"
+              onClick={() => {
+                const cols = columns.map((c) => c.name);
+                const vals = cols.map((c) => {
+                  const v = rowMenu.row[c];
+                  if (v === null || v === undefined) return "NULL";
+                  if (typeof v === "number" || typeof v === "boolean") return String(v);
+                  return `'${String(v).replace(/'/g, "''")}'`;
+                });
+                const sql = `INSERT INTO table_name (${cols.join(", ")}) VALUES (${vals.join(", ")});`;
+                navigator.clipboard.writeText(sql);
+                setRowMenu(null);
+              }}
+            >
+              <Copy className="h-3 w-3" />Copy as INSERT
+            </button>
+            <button
+              className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted transition-colors flex items-center gap-2"
+              onClick={() => {
+                const vals = columns.map((c) => {
+                  const v = rowMenu.row[c.name];
+                  return v === null || v === undefined ? "" : typeof v === "object" ? JSON.stringify(v) : String(v);
+                });
+                navigator.clipboard.writeText(vals.join("\t"));
+                setRowMenu(null);
+              }}
+            >
+              <Copy className="h-3 w-3" />Copy as TSV
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
