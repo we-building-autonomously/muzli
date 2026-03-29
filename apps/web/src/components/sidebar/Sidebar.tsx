@@ -33,6 +33,7 @@ interface SidebarProps {
   onVectorContextSelect?: (ctx: VectorSearchContext) => void;
   onDbContextSelect?: (ctx: DbContext) => void;
   onDbTreeChange?: (metadata: DbMetadata | null) => void;
+  onPreviewTable?: (schema: string, table: string) => void;
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
   restoredConnectionId: string | null;
@@ -46,7 +47,8 @@ interface TreeState {
 
 export function Sidebar({
   selectedConnection, onConnectionSelect, onTableSelect,
-  onVectorContextSelect, onDbContextSelect, onDbTreeChange, isLoading, setIsLoading, restoredConnectionId,
+  onVectorContextSelect, onDbContextSelect, onDbTreeChange, onPreviewTable,
+  isLoading, setIsLoading, restoredConnectionId,
 }: SidebarProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [hasRestored, setHasRestored] = useState(false);
@@ -418,6 +420,7 @@ export function Sidebar({
                                   <div
                                     className="flex items-center gap-1.5 py-1 px-2 rounded-md cursor-pointer text-xs hover:bg-muted/50"
                                     onClick={(e) => { e.stopPropagation(); toggleTable(connection.id, tableKey); onDbContextSelect?.({ schema: s.name, table: t.name }); }}
+                                    onDoubleClick={(e) => { e.stopPropagation(); onPreviewTable?.(s.name, t.name); }}
                                   >
                                     {tableExpanded ? <ChevronDown className="h-3 w-3 text-muted-foreground flex-shrink-0" /> : <ChevronRight className="h-3 w-3 text-muted-foreground flex-shrink-0" />}
                                     <Table2 className="h-3 w-3 text-blue-400/70 flex-shrink-0" />

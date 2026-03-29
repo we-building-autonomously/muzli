@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Play, Loader2, Database, Search, History, X, Bookmark, Trash2 } from "lucide-react";
+import { Play, Loader2, Database, Search, History, X, Bookmark, Trash2, Wand2 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
 import { apiClient } from "@/api/client";
@@ -70,6 +70,37 @@ function buildTurbopufferDefault(ctx?: VectorSearchContext | null) {
 const PINECONE_LIST_INDEXES = `{
   "operation": "list_indexes"
 }`;
+
+function formatQuery(query: string, isSql: boolean): string {
+  if (!isSql) {
+    // JSON: just parse and re-stringify
+    try {
+      return JSON.stringify(JSON.parse(query), null, 2);
+    } catch {
+      return query;
+    }
+  }
+  // Simple SQL formatter: uppercase keywords, newline before major clauses
+  const keywords = ["SELECT", "FROM", "WHERE", "AND", "OR", "JOIN", "LEFT JOIN", "RIGHT JOIN",
+    "INNER JOIN", "OUTER JOIN", "ON", "GROUP BY", "ORDER BY", "HAVING", "LIMIT", "OFFSET",
+    "INSERT INTO", "VALUES", "UPDATE", "SET", "DELETE FROM", "CREATE TABLE", "ALTER TABLE",
+    "DROP TABLE", "UNION", "UNION ALL", "EXCEPT", "INTERSECT", "WITH"];
+  const newlineBefore = new Set(["FROM", "WHERE", "AND", "OR", "JOIN", "LEFT JOIN", "RIGHT JOIN",
+    "INNER JOIN", "OUTER JOIN", "ON", "GROUP BY", "ORDER BY", "HAVING", "LIMIT", "OFFSET",
+    "SET", "VALUES", "UNION", "UNION ALL"]);
+
+  let result = query.trim().replace(/\s+/g, " ");
+  // Uppercase keywords
+  for (const kw of keywords) {
+    const regex = new RegExp(`\\b${kw.replace(/ /g, "\\s+")}\\b`, "gi");
+    result = result.replace(regex, kw);
+  }
+  // Add newlines before major clauses
+  for (const kw of newlineBefore) {
+    result = result.replace(new RegExp(`\\s+${kw.replace(/ /g, "\\s+")}\\b`, "g"), `\n${kw}`);
+  }
+  return result;
+}
 
 interface EditorProps {
   selectedConnection: DatabaseConnection | null;
@@ -281,6 +312,15 @@ export function Editor({
         </div>
 
         <div className="flex items-center gap-1.5">
+          {selectedConnection && query.trim() && (
+            <Button
+              onClick={() => setQuery(formatQuery(query, isSql))}
+              variant="outline" size="sm" className="h-7 text-xs px-2.5"
+              title="Format query"
+            >
+              <Wand2 className="mr-1 h-3 w-3" />Format
+            </Button>
+          )}
           {selectedConnection && query.trim() && query !== SQL_DEFAULT && (
             <Button
               onClick={() => { setSaveDialogOpen(true); setSaveName(""); }}

@@ -1,9 +1,22 @@
 "use client";
 
 import { useState, useMemo, useCallback, lazy, Suspense } from "react";
-import { BarChart3, Table, Loader2, AlertCircle, Box, Copy, Check, Download, Search, ArrowUp, ArrowDown, X } from "lucide-react";
+import { BarChart3, Table, Loader2, AlertCircle, Box, Copy, Check, Download, Search, ArrowUp, ArrowDown, X, Hash, Type, Key, Braces, Calendar, ToggleLeft } from "lucide-react";
 import type { QueryResult, TableData, VectorData } from "@/types";
 import { formatDuration } from "@/lib/utils";
+
+function ColumnTypeIcon({ type }: { type: string }) {
+  const t = type.toLowerCase();
+  if (t.includes("key") || t === "id") return <Key className="h-3 w-3 text-amber-400/70" />;
+  if (t.includes("int") || t.includes("float") || t.includes("decimal") || t.includes("numeric") || t === "real" || t === "double")
+    return <Hash className="h-3 w-3 text-orange-400/70" />;
+  if (t.includes("bool")) return <ToggleLeft className="h-3 w-3 text-green-400/70" />;
+  if (t.includes("json") || t.includes("object") || t.includes("array")) return <Braces className="h-3 w-3 text-emerald-400/70" />;
+  if (t.includes("date") || t.includes("time") || t.includes("timestamp")) return <Calendar className="h-3 w-3 text-blue-400/70" />;
+  if (t.includes("char") || t.includes("text") || t.includes("varchar") || t === "string" || t === "name")
+    return <Type className="h-3 w-3 text-purple-400/70" />;
+  return null;
+}
 
 function exportCsv(columns: { name: string }[], rows: Record<string, unknown>[]) {
   const escape = (v: unknown) => {
@@ -402,6 +415,7 @@ export function Results({ queryResult, tableData, isLoading, connectionType, err
                         title={`${distinctCount} distinct, ${nullCount} null`}
                       >
                         <div className="flex items-center gap-1.5">
+                          <ColumnTypeIcon type={column.type} />
                           <span>{column.name}</span>
                           <span className="text-[10px] text-muted-foreground">
                             {column.type}

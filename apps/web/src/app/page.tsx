@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { Plus, X, Sun, Moon, Keyboard } from "lucide-react";
+import { apiClient } from "@/api/client";
 import { QueryProvider } from "@/components/providers/QueryProvider";
 import { Sidebar } from "@/components/sidebar/Sidebar";
 import { Editor } from "@/components/editor/Editor";
@@ -49,6 +50,7 @@ function MuzliApp() {
   const [tabs, setTabs] = useState<QueryTab[]>(() => [createTab()]);
   const [activeTabId, setActiveTabId] = useState<string>(tabs[0].id);
 
+  const [editingTabId, setEditingTabId] = useState<string | null>(null);
   const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0];
 
   useEffect(() => {
@@ -138,6 +140,20 @@ function MuzliApp() {
     });
   };
 
+  const handlePreviewTable = useCallback(async (schema: string, table: string) => {
+    if (!selectedConnection) return;
+    setIsLoading(true);
+    try {
+      const data = await apiClient.getTableData(selectedConnection, schema, table, { page: 1, pageSize: 100 });
+      updateActiveTab({ tableData: data, queryResult: null, error: null });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to preview table";
+      updateActiveTab({ error: msg, queryResult: null, tableData: null });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [selectedConnection, updateActiveTab]);
+
   return (
     <div className="h-screen bg-background text-foreground">
       <div className="border-b">
@@ -195,6 +211,7 @@ function MuzliApp() {
               onVectorContextSelect={setVectorContext}
               onDbContextSelect={setDbContext}
               onDbTreeChange={setDbMetadata}
+              onPreviewTable={handlePreviewTable}
               isLoading={isLoading}
               setIsLoading={setIsLoading}
               restoredConnectionId={restoredConnectionId}
@@ -219,8 +236,27 @@ function MuzliApp() {
                               : "text-muted-foreground hover:text-foreground hover:bg-background/50"
                           }`}
                           onClick={() => setActiveTabId(tab.id)}
+                          onDoubleClick={() => setEditingTabId(tab.id)}
                         >
-                          <span className="truncate max-w-[100px]">{tab.label}</span>
+                          {editingTabId === tab.id ? (
+                            <input
+                              autoFocus
+                              defaultValue={tab.label}
+                              className="bg-transparent text-xs w-20 outline-none border-b border-primary"
+                              onBlur={(e) => {
+                                const val = e.target.value.trim();
+                                if (val) setTabs((prev) => prev.map((t) => t.id === tab.id ? { ...t, label: val } : t));
+                                setEditingTabId(null);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                                if (e.key === "Escape") setEditingTabId(null);
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          ) : (
+                            <span className="truncate max-w-[100px]">{tab.label}</span>
+                          )}
                           {tabs.length > 1 && (
                             <button
                               onClick={(e) => { e.stopPropagation(); closeTab(tab.id); }}
