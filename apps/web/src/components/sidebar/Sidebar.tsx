@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Plus, Database, Loader2, ChevronRight, ChevronDown, Layers, FolderOpen, Table2, Hash } from "lucide-react";
+import { Plus, Database, Loader2, ChevronRight, ChevronDown, Layers, FolderOpen, Table2, Hash, Upload, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConnectionDialog } from "@/components/dialogs/ConnectionDialog";
 import { apiClient } from "@/api/client";
@@ -12,6 +12,8 @@ import {
   getSchemaCache,
   setSchemaCache,
   removeSchemaCache,
+  markConnectionUsed,
+  getRecentConnectionIds,
 } from "@/lib/connections";
 import type { DatabaseConnection, TableData, VectorSearchContext, DbContext } from "@/types";
 import type { DbMetadata } from "@/lib/sql-autocomplete";
@@ -332,14 +334,62 @@ export function Sidebar({
       <div className="px-3 py-2 border-b">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold">Connections</h2>
-          <Button size="sm" onClick={() => setIsDialogOpen(true)} className="h-6 w-6 p-0">
-            <Plus className="h-3.5 w-3.5" />
-          </Button>
+          <div className="flex items-center gap-0.5">
+            <button
+              onClick={() => {
+                const data = JSON.stringify(connections.map(({ id, ...rest }) => rest), null, 2);
+                const blob = new Blob([data], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a"); a.href = url; a.download = "muzli-connections.json"; a.click();
+                URL.revokeObjectURL(url);
+              }}
+              className="h-6 w-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              title="Export connections"
+            >
+              <Download className="h-3 w-3" />
+            </button>
+            <button
+              onClick={() => {
+                const input = document.createElement("input"); input.type = "file"; input.accept = ".json";
+                input.onchange = (e) => {
+                  const file = (e.target as HTMLInputElement).files?.[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = (ev) => {
+                    try {
+                      const imported = JSON.parse(ev.target?.result as string);
+                      if (Array.isArray(imported)) {
+                        imported.forEach((conn: Record<string, unknown>) => saveConnection(conn as any));
+                        refreshConnections();
+                      }
+                    } catch {}
+                  };
+                  reader.readAsText(file);
+                };
+                input.click();
+              }}
+              className="h-6 w-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              title="Import connections"
+            >
+              <Upload className="h-3 w-3" />
+            </button>
+            <Button size="sm" onClick={() => setIsDialogOpen(true)} className="h-6 w-6 p-0">
+              <Plus className="h-3.5 w-3.5" />
+            </Button>
+          </div>
         </div>
       </div>
 
       <div className="flex-1 overflow-auto p-1.5">
-        {connections.map((connection) => {
+        {[...connections].sort((a, b) => {
+          const recentIds = getRecentConnectionIds();
+          const ai = recentIds.indexOf(a.id);
+          const bi = recentIds.indexOf(b.id);
+          if (ai !== -1 && bi !== -1) return ai - bi;
+          if (ai !== -1) return -1;
+          if (bi !== -1) return 1;
+          return 0;
+        }).map((connection) => {
           const icon = DB_ICONS[connection.type] || "🗄️";
           const isExpanded = expandedConnections.has(connection.id);
           const isVector = isVectorDb(connection.type);
@@ -360,7 +410,7 @@ export function Sidebar({
                 className={`group p-2 rounded-md cursor-pointer transition-colors ${
                   selectedConnection?.id === connection.id ? "bg-accent text-accent-foreground" : "hover:bg-muted"
                 }`}
-                onClick={() => { onConnectionSelect(connection); if (canExpand) toggleConnection(connection); }}
+                onClick={() => { onConnectionSelect(connection); markConnectionUsed(connection.id); if (canExpand) toggleConnection(connection); }}
                 onContextMenu={(e) => handleContextMenu(e, connection.id)}
               >
                 <div className="flex items-center gap-1.5">
@@ -430,14 +480,23 @@ export function Sidebar({
                                   </div>
                                   {tableExpanded && (
                                     <div className="ml-3 pl-2 border-l border-border/20">
-                                      {t.columns.map((col) => (
-                                        <div key={col.name} className="flex items-center gap-1.5 py-0.5 px-2 text-xs text-muted-foreground">
-                                          <Hash className="h-2.5 w-2.5 flex-shrink-0" />
-                                          <span className="truncate">{col.name}</span>
-                                          <span className="text-[10px] ml-auto flex-shrink-0 opacity-60">{col.dataType}</span>
-                                          {col.isPrimaryKey && <span className="text-[9px] text-amber-400 flex-shrink-0">PK</span>}
-                                        </div>
-                                      ))}
+                                      {t.columns.map((col) => {
+                                        const dt = col.dataType.toLowerCase();
+                                        const typeColor = dt.includes("int") || dt.includes("float") || dt.includes("numeric") || dt === "real"
+                                          ? "text-orange-400/70"
+                                          : dt.includes("bool") ? "text-green-400/70"
+                                          : dt.includes("json") ? "text-emerald-400/70"
+                                          : dt.includes("date") || dt.includes("time") ? "text-blue-400/70"
+                                          : "text-purple-400/70";
+                                        return (
+                                          <div key={col.name} className="flex items-center gap-1.5 py-0.5 px-2 text-xs text-muted-foreground group/col">
+                                            <Hash className="h-2.5 w-2.5 flex-shrink-0" />
+                                            <span className={`truncate ${col.isPrimaryKey ? "text-foreground font-medium" : ""}`}>{col.name}</span>
+                                            <span className={`text-[10px] ml-auto flex-shrink-0 ${typeColor}`}>{col.dataType}</span>
+                                            {col.isPrimaryKey && <span className="text-[9px] bg-amber-400/20 text-amber-400 px-1 rounded flex-shrink-0">PK</span>}
+                                          </div>
+                                        );
+                                      })}
                                     </div>
                                   )}
                                 </div>

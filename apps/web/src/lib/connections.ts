@@ -59,3 +59,22 @@ export function removeSchemaCache(connectionId: string): void {
     localStorage.removeItem(`${SCHEMA_CACHE_KEY}:${connectionId}`);
   } catch {}
 }
+
+const RECENT_KEY = "muzli:recent-connections";
+const MAX_RECENT = 3;
+
+export function markConnectionUsed(connectionId: string): void {
+  try {
+    const recent: string[] = JSON.parse(localStorage.getItem(RECENT_KEY) || "[]");
+    const updated = [connectionId, ...recent.filter((id) => id !== connectionId)].slice(0, MAX_RECENT);
+    localStorage.setItem(RECENT_KEY, JSON.stringify(updated));
+  } catch {}
+}
+
+export function getRecentConnectionIds(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem(RECENT_KEY) || "[]");
+  } catch {
+    return [];
+  }
+}

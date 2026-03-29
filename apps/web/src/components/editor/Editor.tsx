@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Play, Loader2, Database, Search, History, X, Bookmark, Trash2, Wand2 } from "lucide-react";
+import { Play, Loader2, Database, Search, History, X, Bookmark, Trash2, Wand2, FileCode } from "lucide-react";
 import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
 import { apiClient } from "@/api/client";
@@ -102,6 +102,19 @@ function formatQuery(query: string, isSql: boolean): string {
   return result;
 }
 
+const SQL_SNIPPETS = [
+  { label: "SELECT", snippet: "SELECT *\nFROM table_name\nWHERE condition\nLIMIT 100;" },
+  { label: "INSERT", snippet: "INSERT INTO table_name (col1, col2)\nVALUES ('val1', 'val2');" },
+  { label: "UPDATE", snippet: "UPDATE table_name\nSET col1 = 'value'\nWHERE condition;" },
+  { label: "DELETE", snippet: "DELETE FROM table_name\nWHERE condition;" },
+  { label: "CREATE TABLE", snippet: "CREATE TABLE table_name (\n  id SERIAL PRIMARY KEY,\n  name VARCHAR(255) NOT NULL,\n  created_at TIMESTAMP DEFAULT NOW()\n);" },
+  { label: "ALTER TABLE", snippet: "ALTER TABLE table_name\nADD COLUMN col_name VARCHAR(255);" },
+  { label: "CREATE INDEX", snippet: "CREATE INDEX idx_name\nON table_name (column_name);" },
+  { label: "EXPLAIN", snippet: "EXPLAIN ANALYZE\nSELECT * FROM table_name;" },
+  { label: "JOIN", snippet: "SELECT a.*, b.*\nFROM table_a a\nINNER JOIN table_b b ON a.id = b.a_id\nWHERE condition;" },
+  { label: "GROUP BY", snippet: "SELECT col, COUNT(*) as count\nFROM table_name\nGROUP BY col\nORDER BY count DESC;" },
+];
+
 interface EditorProps {
   selectedConnection: DatabaseConnection | null;
   onQueryExecute: (result: QueryResult) => void;
@@ -140,6 +153,7 @@ export function Editor({
   const [saved, setSaved] = useState<SavedQuery[]>([]);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [saveName, setSaveName] = useState("");
+  const [showSnippets, setShowSnippets] = useState(false);
   const [hasSelection, setHasSelection] = useState(false);
   const completionProviderRef = useRef<{ dispose: () => void } | null>(null);
   const monacoRef = useRef<any>(null);
@@ -320,6 +334,33 @@ export function Editor({
             >
               <Wand2 className="mr-1 h-3 w-3" />Format
             </Button>
+          )}
+          {selectedConnection && isSql && (
+            <div className="relative">
+              <Button
+                onClick={() => setShowSnippets(!showSnippets)}
+                variant={showSnippets ? "default" : "outline"}
+                size="sm" className="h-7 text-xs px-2.5"
+              >
+                <FileCode className="mr-1 h-3 w-3" />Snippets
+              </Button>
+              {showSnippets && (
+                <>
+                  <div className="fixed inset-0 z-30" onClick={() => setShowSnippets(false)} />
+                  <div className="absolute top-8 left-0 z-40 bg-popover border rounded-md shadow-lg py-1 min-w-[160px]">
+                    {SQL_SNIPPETS.map((s) => (
+                      <button
+                        key={s.label}
+                        className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted transition-colors"
+                        onClick={() => { setQuery(s.snippet); setShowSnippets(false); }}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
           )}
           {selectedConnection && query.trim() && query !== SQL_DEFAULT && (
             <Button
