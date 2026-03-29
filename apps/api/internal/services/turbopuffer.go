@@ -191,7 +191,26 @@ func (s *TurbopufferService) ExecuteQuery(conn *models.Connection, query string)
 	case "query":
 		body := map[string]interface{}{}
 		if v, ok := parsed["vector"]; ok {
-			body["vector"] = v
+			// If vector is empty array, fetch dimension from namespace and create zero vector
+			if arr, isArr := v.([]interface{}); isArr && len(arr) == 0 {
+				// Fetch namespace info to get dimension
+				dbs, _ := s.GetDatabases(conn)
+				for _, db := range dbs {
+					if db.Name == namespace {
+						dim := 0
+						if d, err := fmt.Sscanf(db.Ctypes, "%d", &dim); err == nil && d > 0 && dim > 0 {
+							zeroVec := make([]float64, dim)
+							body["vector"] = zeroVec
+						}
+						break
+					}
+				}
+				if _, hasVec := body["vector"]; !hasVec {
+					body["vector"] = v
+				}
+			} else {
+				body["vector"] = v
+			}
 		}
 		if v, ok := parsed["top_k"]; ok {
 			body["top_k"] = v

@@ -34,11 +34,14 @@ function buildMongoDefault(ctx?: DbContext | null) {
 function buildPineconeDefault(ctx?: VectorSearchContext | null) {
   const index = ctx?.index || "my-index";
   const ns = ctx?.namespace ? `\n  "namespace": "${ctx.namespace}",` : "";
-  const dim = ctx?.dimension || 3;
+  const dim = ctx?.dimension || 0;
+  const vectorLine = dim > 0
+    ? `"vector": [${Array(dim).fill("0.0").join(", ")}]`
+    : `"vector": []`;
   return `{
   "operation": "query",
   "index": "${index}",${ns}
-  "vector": [${Array(dim).fill("0.0").join(", ")}],
+  ${vectorLine},
   "topK": 10,
   "includeMetadata": true,
   "includeValues": true
@@ -47,11 +50,14 @@ function buildPineconeDefault(ctx?: VectorSearchContext | null) {
 
 function buildTurbopufferDefault(ctx?: VectorSearchContext | null) {
   const ns = ctx?.namespace || ctx?.index || "my-namespace";
-  const dim = ctx?.dimension || 3;
+  const dim = ctx?.dimension || 0;
+  const vectorLine = dim > 0
+    ? `"vector": [${Array(dim).fill("0.0").join(", ")}]`
+    : `"vector": []`;
   return `{
   "operation": "query",
   "namespace": "${ns}",
-  "vector": [${Array(dim).fill("0.0").join(", ")}],
+  ${vectorLine},
   "top_k": 10,
   "include_vectors": true,
   "include_attributes": true

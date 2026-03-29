@@ -213,7 +213,22 @@ func (s *PineconeService) ExecuteQuery(conn *models.Connection, query string) (*
 		}
 		body := map[string]interface{}{}
 		if v, ok := parsed["vector"]; ok {
-			body["vector"] = v
+			// If vector is empty, fetch dimension from index stats and create zero vector
+			if arr, isArr := v.([]interface{}); isArr && len(arr) == 0 {
+				if host != "" {
+					stats, _ := client.dataPlane(ctx, host, "POST", "/describe_index_stats", map[string]interface{}{})
+					if stats != nil {
+						if d, ok := stats["dimension"].(float64); ok && d > 0 {
+							body["vector"] = make([]float64, int(d))
+						}
+					}
+				}
+				if _, hasVec := body["vector"]; !hasVec {
+					body["vector"] = v
+				}
+			} else {
+				body["vector"] = v
+			}
 		}
 		if v, ok := parsed["topK"]; ok {
 			body["topK"] = v
