@@ -97,9 +97,10 @@ interface ResultsProps {
   isLoading: boolean;
   connectionType?: string;
   error?: string | null;
+  onPageChange?: (page: number) => void;
 }
 
-export function Results({ queryResult, tableData, isLoading, connectionType, error }: ResultsProps) {
+export function Results({ queryResult, tableData, isLoading, connectionType, error, onPageChange }: ResultsProps) {
   const [view, setView] = useState<"table" | "3d">("table");
   const data = queryResult || tableData;
 
@@ -207,9 +208,24 @@ export function Results({ queryResult, tableData, isLoading, connectionType, err
             <span>{queryResult.affectedRows} affected</span>
           )}
           {tableData && (
-            <span>
-              p.{tableData.page}/{Math.ceil(tableData.totalRows / tableData.pageSize)}
-            </span>
+            <div className="flex items-center gap-1">
+              {onPageChange && tableData.page > 1 && (
+                <button
+                  onClick={() => onPageChange(tableData.page - 1)}
+                  className="px-1.5 py-0.5 rounded hover:bg-muted transition-colors text-[10px]"
+                >Prev</button>
+              )}
+              <span>
+                p.{tableData.page}/{Math.ceil(tableData.totalRows / tableData.pageSize)}
+              </span>
+              {onPageChange && tableData.page < Math.ceil(tableData.totalRows / tableData.pageSize) && (
+                <button
+                  onClick={() => onPageChange(tableData.page + 1)}
+                  className="px-1.5 py-0.5 rounded hover:bg-muted transition-colors text-[10px]"
+                >Next</button>
+              )}
+              <span className="text-[10px] opacity-70">({tableData.totalRows} total)</span>
+            </div>
           )}
           {rows.length > 0 && (
             <div className="flex items-center gap-0.5 ml-1 border-l pl-2 border-border/50">

@@ -120,7 +120,7 @@ export function Sidebar({
   };
 
   const isVectorDb = (type: string) => type === "pinecone" || type === "turbopuffer";
-  const isRelationalDb = (type: string) => ["postgres", "mysql", "mongodb", "sqlite"].includes(type);
+  const isRelationalDb = (type: string) => ["postgres", "mysql", "mongodb", "sqlite", "redis"].includes(type);
   const isExpandable = (type: string) => isVectorDb(type) || isRelationalDb(type);
 
   const getSubline = (conn: DatabaseConnection) => {
