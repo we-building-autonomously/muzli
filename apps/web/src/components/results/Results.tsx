@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useMemo, lazy, Suspense } from "react";
-import { BarChart3, Table, Loader2, AlertCircle, Box, Copy, Check, Download } from "lucide-react";
+import { useState, useMemo, useCallback, lazy, Suspense } from "react";
+import { BarChart3, Table, Loader2, AlertCircle, Box, Copy, Check, Download, Search, ArrowUp, ArrowDown, X } from "lucide-react";
 import type { QueryResult, TableData, VectorData } from "@/types";
 import { formatDuration } from "@/lib/utils";
 
@@ -91,6 +91,29 @@ function JsonCell({ value }: { value: unknown }) {
   );
 }
 
+function CopyableCell({ value, children }: { value: unknown; children: React.ReactNode }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const text = value === null || value === undefined ? "" : typeof value === "object" ? JSON.stringify(value) : String(value);
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1200);
+  };
+
+  return (
+    <div className="max-w-xs truncate group/cell relative cursor-pointer" onClick={handleCopy} title="Click to copy">
+      {children}
+      {copied && (
+        <span className="absolute -top-5 left-0 bg-popover border text-[9px] px-1.5 py-0.5 rounded shadow-sm text-emerald-400 whitespace-nowrap z-10">
+          Copied!
+        </span>
+      )}
+    </div>
+  );
+}
+
 interface ResultsProps {
   queryResult: QueryResult | null;
   tableData: TableData | null;
@@ -100,8 +123,14 @@ interface ResultsProps {
   onPageChange?: (page: number) => void;
 }
 
+type SortDir = "asc" | "desc";
+
 export function Results({ queryResult, tableData, isLoading, connectionType, error, onPageChange }: ResultsProps) {
   const [view, setView] = useState<"table" | "3d">("table");
+  const [sortCol, setSortCol] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showSearch, setShowSearch] = useState(false);
   const data = queryResult || tableData;
 
   const isVectorDb = connectionType === "pinecone" || connectionType === "turbopuffer";
@@ -119,6 +148,23 @@ export function Results({ queryResult, tableData, isLoading, connectionType, err
         metadata: (row.metadata || row.attributes) as Record<string, unknown> | undefined,
       }));
   }, [data, isVectorDb]);
+
+  const handleSort = useCallback((colName: string) => {
+    if (sortCol === colName) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortCol(colName);
+      setSortDir("asc");
+    }
+  }, [sortCol]);
+
+  // Reset sort/search when data changes
+  const dataKey = data ? JSON.stringify(data.columns?.map((c: { name: string }) => c.name)) : "";
+  useMemo(() => {
+    setSortCol(null);
+    setSortDir("asc");
+    setSearchQuery("");
+  }, [dataKey]);
 
   if (isLoading) {
     return (
@@ -173,10 +219,39 @@ export function Results({ queryResult, tableData, isLoading, connectionType, err
   }
 
   const isQueryResult = "executionTime" in data;
-  const rows = data.rows || [];
+  const rawRows = data.rows || [];
   const columns = isQueryResult
     ? data.columns
     : data.columns.map((col) => ({ name: col.name, type: col.dataType }));
+
+  // Filter rows
+  const filteredRows = searchQuery
+    ? rawRows.filter((row) => {
+        const q = searchQuery.toLowerCase();
+        return columns.some((col) => {
+          const v = row[col.name];
+          if (v === null || v === undefined) return false;
+          const s = typeof v === "object" ? JSON.stringify(v) : String(v);
+          return s.toLowerCase().includes(q);
+        });
+      })
+    : rawRows;
+
+  // Sort rows
+  const rows = sortCol
+    ? [...filteredRows].sort((a, b) => {
+        const av = a[sortCol];
+        const bv = b[sortCol];
+        if (av === null || av === undefined) return 1;
+        if (bv === null || bv === undefined) return -1;
+        if (typeof av === "number" && typeof bv === "number") {
+          return sortDir === "asc" ? av - bv : bv - av;
+        }
+        const as = String(av);
+        const bs = String(bv);
+        return sortDir === "asc" ? as.localeCompare(bs) : bs.localeCompare(as);
+      })
+    : filteredRows;
 
   return (
     <div className="h-full flex flex-col">
@@ -184,6 +259,17 @@ export function Results({ queryResult, tableData, isLoading, connectionType, err
         <div className="flex items-center gap-2">
           <BarChart3 className="h-3.5 w-3.5" />
           <span className="text-sm">Results</span>
+          {rawRows.length > 0 && (
+            <button
+              onClick={() => { setShowSearch(!showSearch); if (showSearch) setSearchQuery(""); }}
+              className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] transition-colors ${
+                showSearch ? "bg-primary/20 text-primary" : "text-muted-foreground hover:bg-muted"
+              }`}
+              title="Search results (Ctrl+F)"
+            >
+              <Search className="h-3 w-3" />
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
@@ -202,7 +288,7 @@ export function Results({ queryResult, tableData, isLoading, connectionType, err
             <span>{formatDuration(queryResult.executionTime)}</span>
           )}
           <span>
-            {rows.length} row{rows.length !== 1 ? "s" : ""}
+            {searchQuery ? `${rows.length}/${rawRows.length}` : rows.length} row{rows.length !== 1 ? "s" : ""}
           </span>
           {queryResult?.affectedRows !== undefined && (
             <span>{queryResult.affectedRows} affected</span>
@@ -248,6 +334,26 @@ export function Results({ queryResult, tableData, isLoading, connectionType, err
         </div>
       </div>
 
+      {/* Search bar */}
+      {showSearch && (
+        <div className="flex items-center gap-2 px-3 py-1.5 border-b bg-muted/30">
+          <Search className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+          <input
+            autoFocus
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Escape") { setShowSearch(false); setSearchQuery(""); } }}
+            placeholder="Filter rows..."
+            className="flex-1 bg-transparent text-xs focus:outline-none placeholder:text-muted-foreground/50"
+          />
+          {searchQuery && (
+            <button onClick={() => setSearchQuery("")} className="text-muted-foreground hover:text-foreground">
+              <X className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="flex-1 overflow-auto">
         {view === "3d" && vectorData.length > 0 ? (
           <Suspense
@@ -259,7 +365,7 @@ export function Results({ queryResult, tableData, isLoading, connectionType, err
           >
             <VectorVisualization vectors={vectorData} />
           </Suspense>
-        ) : rows.length === 0 ? (
+        ) : rows.length === 0 && !searchQuery ? (
           <div className="p-6 text-center text-muted-foreground">
             <AlertCircle className="h-6 w-6 mx-auto mb-1.5" />
             <p className="text-sm">Query executed successfully</p>
@@ -272,21 +378,33 @@ export function Results({ queryResult, tableData, isLoading, connectionType, err
                 </p>
               )}
           </div>
+        ) : rows.length === 0 && searchQuery ? (
+          <div className="p-6 text-center text-muted-foreground">
+            <Search className="h-6 w-6 mx-auto mb-1.5 opacity-50" />
+            <p className="text-sm">No matching rows</p>
+            <p className="text-xs mt-0.5">Try a different search term</p>
+          </div>
         ) : (
           <div className="min-w-full">
             <table className="w-full text-xs">
-              <thead className="bg-muted">
+              <thead className="bg-muted sticky top-0">
                 <tr>
                   {columns.map((column, index) => (
                     <th
                       key={index}
-                      className="px-3 py-1.5 text-left font-medium text-xs"
+                      className="px-3 py-1.5 text-left font-medium text-xs cursor-pointer hover:bg-muted/80 select-none"
+                      onClick={() => handleSort(column.name)}
                     >
                       <div className="flex items-center gap-1.5">
                         <span>{column.name}</span>
                         <span className="text-[10px] text-muted-foreground">
                           {column.type}
                         </span>
+                        {sortCol === column.name && (
+                          sortDir === "asc"
+                            ? <ArrowUp className="h-3 w-3 text-primary flex-shrink-0" />
+                            : <ArrowDown className="h-3 w-3 text-primary flex-shrink-0" />
+                        )}
                       </div>
                     </th>
                   ))}
@@ -299,7 +417,7 @@ export function Results({ queryResult, tableData, isLoading, connectionType, err
                       const value = row[column.name];
                       return (
                         <td key={colIndex} className="px-3 py-1">
-                          <div className="max-w-xs truncate">
+                          <CopyableCell value={value}>
                             {value === null || value === undefined ? (
                               <span className="text-muted-foreground italic">
                                 NULL
@@ -319,7 +437,7 @@ export function Results({ queryResult, tableData, isLoading, connectionType, err
                             ) : (
                               <span>{String(value)}</span>
                             )}
-                          </div>
+                          </CopyableCell>
                         </td>
                       );
                     })}

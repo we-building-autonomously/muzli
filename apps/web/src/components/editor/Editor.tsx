@@ -2,12 +2,13 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Play, Loader2, Database, Search, History, X } from "lucide-react";
+import { Play, Loader2, Database, Search, History, X, Bookmark, Trash2 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
 import { apiClient } from "@/api/client";
 import { registerSqlCompletionProvider, type DbMetadata } from "@/lib/sql-autocomplete";
 import { getQueryHistory, addQueryToHistory, clearQueryHistory, type QueryHistoryEntry } from "@/lib/query-history";
+import { getSavedQueries, saveQuery, deleteSavedQuery, type SavedQuery } from "@/lib/saved-queries";
 import { formatDuration } from "@/lib/utils";
 import type { DatabaseConnection, QueryResult, VectorSearchContext, DbContext } from "@/types";
 
@@ -101,21 +102,28 @@ export function Editor({
   const [query, setQuery] = useState(SQL_DEFAULT);
   const [queryLimit, setQueryLimit] = useState(100);
   const [showHistory, setShowHistory] = useState(false);
+  const [showSaved, setShowSaved] = useState(false);
   const [history, setHistory] = useState<QueryHistoryEntry[]>([]);
+  const [saved, setSaved] = useState<SavedQuery[]>([]);
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [saveName, setSaveName] = useState("");
   const completionProviderRef = useRef<{ dispose: () => void } | null>(null);
   const monacoRef = useRef<any>(null);
 
   // Use metadata from sidebar (passed via props)
   const metadata = dbMetadata || null;
 
-  // Load history when connection changes
+  // Load history and saved queries when connection changes
   useEffect(() => {
     if (selectedConnection) {
       setHistory(getQueryHistory(selectedConnection.id));
+      setSaved(getSavedQueries(selectedConnection.id));
     } else {
       setHistory([]);
+      setSaved([]);
     }
     setShowHistory(false);
+    setShowSaved(false);
   }, [selectedConnection?.id]);
 
   useEffect(() => {
@@ -257,9 +265,28 @@ export function Editor({
         </div>
 
         <div className="flex items-center gap-1.5">
+          {selectedConnection && query.trim() && query !== SQL_DEFAULT && (
+            <Button
+              onClick={() => { setSaveDialogOpen(true); setSaveName(""); }}
+              variant="outline" size="sm" className="h-7 text-xs px-2.5"
+            >
+              <Bookmark className="mr-1 h-3 w-3" />Save
+            </Button>
+          )}
+          {selectedConnection && saved.length > 0 && (
+            <Button
+              onClick={() => { setShowSaved(!showSaved); setShowHistory(false); }}
+              variant={showSaved ? "default" : "outline"}
+              size="sm" className="h-7 text-xs px-2.5"
+            >
+              <Bookmark className="mr-1 h-3 w-3" />
+              Saved
+              <span className="ml-1 text-[10px] opacity-70">{saved.length}</span>
+            </Button>
+          )}
           {selectedConnection && history.length > 0 && (
             <Button
-              onClick={() => setShowHistory(!showHistory)}
+              onClick={() => { setShowHistory(!showHistory); setShowSaved(false); }}
               variant={showHistory ? "default" : "outline"}
               size="sm" className="h-7 text-xs px-2.5"
             >
@@ -297,6 +324,76 @@ export function Editor({
       </div>
 
       <div className="flex-1 relative">
+        {/* Save dialog */}
+        {saveDialogOpen && selectedConnection && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/60 backdrop-blur-sm">
+            <div className="bg-popover border rounded-lg shadow-lg p-4 w-72">
+              <h4 className="text-xs font-medium mb-2">Save Query</h4>
+              <input
+                autoFocus
+                value={saveName}
+                onChange={(e) => setSaveName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && saveName.trim()) {
+                    saveQuery(selectedConnection.id, saveName.trim(), query);
+                    setSaved(getSavedQueries(selectedConnection.id));
+                    setSaveDialogOpen(false);
+                  }
+                  if (e.key === "Escape") setSaveDialogOpen(false);
+                }}
+                placeholder="Query name..."
+                className="w-full px-2 py-1.5 text-xs bg-background border rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              <div className="flex justify-end gap-2 mt-3">
+                <button onClick={() => setSaveDialogOpen(false)} className="text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded hover:bg-muted transition-colors">Cancel</button>
+                <button
+                  onClick={() => {
+                    if (!saveName.trim()) return;
+                    saveQuery(selectedConnection.id, saveName.trim(), query);
+                    setSaved(getSavedQueries(selectedConnection.id));
+                    setSaveDialogOpen(false);
+                  }}
+                  disabled={!saveName.trim()}
+                  className="text-xs bg-primary text-primary-foreground px-3 py-1 rounded hover:bg-primary/90 transition-colors disabled:opacity-50"
+                >Save</button>
+              </div>
+            </div>
+          </div>
+        )}
+        {/* Saved queries panel */}
+        {showSaved && selectedConnection && (
+          <div className="absolute inset-0 z-10 bg-background/95 backdrop-blur-sm overflow-auto">
+            <div className="flex items-center justify-between px-3 py-2 border-b sticky top-0 bg-background/95 backdrop-blur-sm">
+              <span className="text-xs font-medium">Saved Queries</span>
+              <button onClick={() => setShowSaved(false)}>
+                <X className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
+              </button>
+            </div>
+            {saved.length === 0 ? (
+              <div className="p-4 text-center text-xs text-muted-foreground">No saved queries yet</div>
+            ) : (
+              <div className="divide-y divide-border/50">
+                {saved.map((entry) => (
+                  <div key={entry.id} className="flex items-start gap-2 px-3 py-2 hover:bg-muted/50 transition-colors group">
+                    <button
+                      className="flex-1 text-left min-w-0"
+                      onClick={() => { setQuery(entry.query); setShowSaved(false); }}
+                    >
+                      <div className="text-xs font-medium truncate">{entry.name}</div>
+                      <pre className="text-[10px] font-mono truncate text-muted-foreground mt-0.5">{entry.query.split("\n").map(l => l.trim()).filter(Boolean).join(" ").slice(0, 100)}</pre>
+                    </button>
+                    <button
+                      onClick={() => { deleteSavedQuery(selectedConnection.id, entry.id); setSaved(getSavedQueries(selectedConnection.id)); }}
+                      className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-400 transition-all mt-1 flex-shrink-0"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         {showHistory && selectedConnection && (
           <div className="absolute inset-0 z-10 bg-background/95 backdrop-blur-sm overflow-auto">
             <div className="flex items-center justify-between px-3 py-2 border-b sticky top-0 bg-background/95 backdrop-blur-sm">
