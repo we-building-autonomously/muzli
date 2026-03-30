@@ -1,463 +1,526 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { Plus, X, Sun, Moon, Keyboard, Search, Database as DatabaseIcon, Table2, Bookmark as BookmarkIcon } from "lucide-react";
-import { apiClient } from "@/api/client";
-import { getConnections } from "@/lib/connections";
-import { getSavedQueries } from "@/lib/saved-queries";
-import { QueryProvider } from "@/components/providers/QueryProvider";
-import { ToastProvider } from "@/components/ui/toast";
-import { Sidebar } from "@/components/sidebar/Sidebar";
-import { Editor } from "@/components/editor/Editor";
-import { Results } from "@/components/results/Results";
-import type { DatabaseConnection, QueryResult, TableData, VectorSearchContext, DbContext } from "@/types";
-import type { DbMetadata } from "@/lib/sql-autocomplete";
+import { useState, useEffect } from "react";
+import Link from "next/link";
+import {
+  Database,
+  Zap,
+  Terminal,
+  Table2,
+  Search,
+  Layers,
+  ArrowRight,
+  Github,
+  Monitor,
+  Globe,
+  ChevronDown,
+  Sparkles,
+  Shield,
+  Command,
+} from "lucide-react";
 
-const STORAGE_KEY = "muzli:selectedConnectionId";
-
-interface QueryTab {
-  id: string;
-  label: string;
-  query: string;
-  queryResult: QueryResult | null;
-  tableData: TableData | null;
-  error: string | null;
-}
-
-let nextTabId = 1;
-
-function createTab(label?: string): QueryTab {
-  const id = `tab-${nextTabId++}`;
-  return { id, label: label || `Query ${nextTabId - 1}`, query: "", queryResult: null, tableData: null, error: null };
-}
-
-const SHORTCUTS = [
-  { keys: "Ctrl+Enter", action: "Execute query (or run selection)" },
-  { keys: "Ctrl+K", action: "Command palette / global search" },
-  { keys: "Ctrl+S", action: "Save current query as bookmark" },
-  { keys: "Ctrl+N", action: "New query tab" },
-  { keys: "Ctrl+W", action: "Close current tab" },
-  { keys: "?", action: "Show keyboard shortcuts" },
+const features = [
+  {
+    icon: Database,
+    title: "Multi-Database Support",
+    description:
+      "Connect to PostgreSQL, MySQL, Redis, Pinecone, and more. Manage all your databases from one interface.",
+  },
+  {
+    icon: Terminal,
+    title: "Monaco Query Editor",
+    description:
+      "Full-powered SQL editor with syntax highlighting, autocomplete, and multi-tab support.",
+  },
+  {
+    icon: Table2,
+    title: "Schema Explorer",
+    description:
+      "Browse databases, schemas, tables, and columns in an intuitive tree view with live previews.",
+  },
+  {
+    icon: Zap,
+    title: "Blazing Fast Results",
+    description:
+      "Instant query execution with streaming results, pagination, sorting, and one-click export.",
+  },
+  {
+    icon: Search,
+    title: "Command Palette",
+    description:
+      "Jump to any table, connection, or saved query instantly with Ctrl+K. Everything is searchable.",
+  },
+  {
+    icon: Shield,
+    title: "Open Source & Local",
+    description:
+      "Your data never leaves your machine. Fully open source, self-hosted, and free forever.",
+  },
 ];
 
-function CommandPaletteResults({
-  query, dbMetadata, selectedConnection, connections, onSelectTable, onSelectConnection, onSelectSavedQuery,
-}: {
-  query: string;
-  dbMetadata: DbMetadata | null;
-  selectedConnection: DatabaseConnection | null;
-  connections: DatabaseConnection[];
-  onSelectTable: (schema: string, table: string) => void;
-  onSelectConnection: (conn: DatabaseConnection) => void;
-  onSelectSavedQuery: (query: string) => void;
-}) {
-  const q = query.toLowerCase().trim();
+const shortcuts = [
+  { keys: "Ctrl+Enter", label: "Execute query" },
+  { keys: "Ctrl+K", label: "Command palette" },
+  { keys: "Ctrl+N", label: "New tab" },
+  { keys: "Ctrl+S", label: "Save query" },
+];
 
-  const items: { type: string; icon: React.ReactNode; label: string; detail: string; action: () => void }[] = [];
-
-  // Connections
-  connections.forEach((conn) => {
-    if (q && !conn.name.toLowerCase().includes(q) && !conn.type.includes(q)) return;
-    items.push({
-      type: "connection",
-      icon: <DatabaseIcon className="h-3.5 w-3.5 text-blue-400" />,
-      label: conn.name,
-      detail: conn.type,
-      action: () => onSelectConnection(conn),
-    });
-  });
-
-  // Tables from current connection metadata
-  if (dbMetadata) {
-    dbMetadata.schemas.forEach((schema) => {
-      schema.tables.forEach((table) => {
-        if (q && !table.name.toLowerCase().includes(q) && !schema.name.toLowerCase().includes(q)) return;
-        items.push({
-          type: "table",
-          icon: <Table2 className="h-3.5 w-3.5 text-emerald-400" />,
-          label: table.name,
-          detail: schema.name,
-          action: () => onSelectTable(schema.name, table.name),
-        });
-      });
-    });
-  }
-
-  // Saved queries
-  if (selectedConnection) {
-    const saved = getSavedQueries(selectedConnection.id);
-    saved.forEach((sq) => {
-      if (q && !sq.name.toLowerCase().includes(q) && !sq.query.toLowerCase().includes(q)) return;
-      items.push({
-        type: "saved",
-        icon: <BookmarkIcon className="h-3.5 w-3.5 text-amber-400" />,
-        label: sq.name,
-        detail: sq.query.split("\n")[0].slice(0, 50),
-        action: () => onSelectSavedQuery(sq.query),
-      });
-    });
-  }
-
-  if (items.length === 0) {
-    return <div className="p-4 text-center text-xs text-muted-foreground">No results</div>;
-  }
-
+function AnimatedGridLine({ delay, horizontal }: { delay: number; horizontal?: boolean }) {
   return (
-    <div className="py-1">
-      {items.slice(0, 20).map((item, i) => (
-        <button
-          key={`${item.type}-${i}`}
-          className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-muted/50 transition-colors"
-          onClick={item.action}
-        >
-          {item.icon}
-          <div className="flex-1 min-w-0">
-            <span className="text-xs font-medium truncate block">{item.label}</span>
-            <span className="text-[10px] text-muted-foreground truncate block">{item.detail}</span>
-          </div>
-          <span className="text-[9px] text-muted-foreground/50 flex-shrink-0">{item.type}</span>
-        </button>
-      ))}
-    </div>
+    <div
+      className={`absolute ${horizontal ? "h-px w-full" : "w-px h-full"} bg-gradient-to-${horizontal ? "r" : "b"} from-transparent via-primary/20 to-transparent`}
+      style={{
+        animation: `pulse 4s ease-in-out ${delay}s infinite`,
+        [horizontal ? "top" : "left"]: `${Math.random() * 100}%`,
+      }}
+    />
   );
 }
 
-function MuzliApp() {
-  const [selectedConnection, setSelectedConnection] = useState<DatabaseConnection | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [restoredConnectionId, setRestoredConnectionId] = useState<string | null>(null);
-  const [vectorContext, setVectorContext] = useState<VectorSearchContext | null>(null);
-  const [dbContext, setDbContext] = useState<DbContext | null>(null);
-  const [dbMetadata, setDbMetadata] = useState<DbMetadata | null>(null);
-  const [isDark, setIsDark] = useState(true);
-  const [showShortcuts, setShowShortcuts] = useState(false);
-
-  // Tabs
-  const [tabs, setTabs] = useState<QueryTab[]>(() => [createTab()]);
-  const [activeTabId, setActiveTabId] = useState<string>(tabs[0].id);
-
-  const [editingTabId, setEditingTabId] = useState<string | null>(null);
-  const [showCommandPalette, setShowCommandPalette] = useState(false);
-  const [cmdQuery, setCmdQuery] = useState("");
-  const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0];
+export default function LandingPage() {
+  const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) setRestoredConnectionId(stored);
-      const theme = localStorage.getItem("muzli:theme");
-      setIsDark(theme !== "light");
-    } catch {}
+    const handler = () => setScrolled(window.scrollY > 20);
+    window.addEventListener("scroll", handler);
+    return () => window.removeEventListener("scroll", handler);
   }, []);
-
-  const toggleTheme = useCallback(() => {
-    setIsDark((prev) => {
-      const next = !prev;
-      document.documentElement.classList.toggle("dark", next);
-      localStorage.setItem("muzli:theme", next ? "dark" : "light");
-      return next;
-    });
-  }, []);
-
-  // Global keyboard shortcuts
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      const isMonaco = (e.target as HTMLElement)?.closest?.(".monaco-editor");
-      if ((e.metaKey || e.ctrlKey) && e.key === "n" && !e.shiftKey) {
-        e.preventDefault();
-        addTab();
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key === "w" && !e.shiftKey) {
-        e.preventDefault();
-        if (tabs.length > 1) closeTab(activeTabId);
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-        e.preventDefault();
-        setShowCommandPalette((prev) => !prev);
-        setCmdQuery("");
-      }
-      if (e.key === "Escape" && showCommandPalette) {
-        setShowCommandPalette(false);
-      }
-      if (e.key === "?" && !isMonaco && !(e.target as HTMLElement)?.matches?.("input,textarea")) {
-        setShowShortcuts((prev) => !prev);
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [tabs, activeTabId]);
-
-  const handleConnectionSelect = (connection: DatabaseConnection | null) => {
-    setSelectedConnection(connection);
-    // Clear results on all tabs when switching connection
-    setTabs((prev) => prev.map((t) => ({ ...t, queryResult: null, tableData: null, error: null })));
-    if (!connection || (connection.type !== "pinecone" && connection.type !== "turbopuffer")) {
-      setVectorContext(null);
-    }
-    try {
-      if (connection) {
-        localStorage.setItem(STORAGE_KEY, connection.id);
-      } else {
-        localStorage.removeItem(STORAGE_KEY);
-      }
-    } catch {}
-  };
-
-  const updateActiveTab = useCallback((updates: Partial<QueryTab>) => {
-    setTabs((prev) => prev.map((t) => t.id === activeTabId ? { ...t, ...updates } : t));
-  }, [activeTabId]);
-
-  const handleQueryExecute = useCallback((result: QueryResult) => {
-    updateActiveTab({ queryResult: result, tableData: null, error: null });
-  }, [updateActiveTab]);
-
-  const handleQueryError = useCallback((error: string) => {
-    updateActiveTab({ error, queryResult: null, tableData: null });
-  }, [updateActiveTab]);
-
-  const handleTableSelect = useCallback((data: TableData) => {
-    updateActiveTab({ tableData: data, queryResult: null, error: null });
-  }, [updateActiveTab]);
-
-  const addTab = () => {
-    const tab = createTab();
-    setTabs((prev) => [...prev, tab]);
-    setActiveTabId(tab.id);
-  };
-
-  const closeTab = (tabId: string) => {
-    setTabs((prev) => {
-      if (prev.length <= 1) return prev;
-      const next = prev.filter((t) => t.id !== tabId);
-      if (activeTabId === tabId) {
-        setActiveTabId(next[next.length - 1].id);
-      }
-      return next;
-    });
-  };
-
-  const handlePreviewTable = useCallback(async (schema: string, table: string) => {
-    if (!selectedConnection) return;
-    setIsLoading(true);
-    try {
-      const data = await apiClient.getTableData(selectedConnection, schema, table, { page: 1, pageSize: 100 });
-      updateActiveTab({ tableData: data, queryResult: null, error: null });
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to preview table";
-      updateActiveTab({ error: msg, queryResult: null, tableData: null });
-    } finally {
-      setIsLoading(false);
-    }
-  }, [selectedConnection, updateActiveTab]);
 
   return (
-    <div className="h-screen bg-background text-foreground">
-      <div className="border-b">
-        <div className="flex h-10 items-center justify-between px-3">
-          <h1 className="text-sm font-bold">Muzli</h1>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setShowShortcuts(true)}
-              className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-              title="Keyboard shortcuts (?)"
+    <div className="min-h-screen bg-background text-foreground">
+      {/* Nav */}
+      <nav
+        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
+          scrolled
+            ? "bg-background/80 backdrop-blur-xl border-b shadow-sm"
+            : "bg-transparent"
+        }`}
+      >
+        <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="h-7 w-7 rounded-lg bg-primary flex items-center justify-center">
+              <Database className="h-3.5 w-3.5 text-primary-foreground" />
+            </div>
+            <span className="font-bold text-base tracking-tight">Muzli</span>
+          </div>
+          <div className="flex items-center gap-6">
+            <a
+              href="#features"
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors hidden sm:block"
             >
-              <Keyboard className="h-3.5 w-3.5" />
-            </button>
-            <button
-              onClick={toggleTheme}
-              className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-              title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+              Features
+            </a>
+            <a
+              href="https://github.com/we-building-autonomously/muzli"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors hidden sm:block"
             >
-              {isDark ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
-            </button>
+              GitHub
+            </a>
+            <Link
+              href="/app"
+              className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors"
+            >
+              Launch App
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
           </div>
         </div>
-      </div>
+      </nav>
 
-      {/* Keyboard shortcuts modal */}
-      {showShortcuts && (
-        <>
-          <div className="fixed inset-0 z-50 bg-background/60 backdrop-blur-sm" onClick={() => setShowShortcuts(false)} />
-          <div className="fixed z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-popover border rounded-lg shadow-xl w-80 p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-medium">Keyboard Shortcuts</h3>
-              <button onClick={() => setShowShortcuts(false)}>
-                <X className="h-4 w-4 text-muted-foreground hover:text-foreground" />
-              </button>
-            </div>
-            <div className="space-y-2">
-              {SHORTCUTS.map((s) => (
-                <div key={s.keys} className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">{s.action}</span>
-                  <kbd className="px-1.5 py-0.5 bg-muted rounded text-[10px] font-mono">{s.keys}</kbd>
+      {/* Hero */}
+      <section className="relative pt-32 pb-20 px-6 overflow-hidden">
+        {/* Background grid effect */}
+        <div className="absolute inset-0 opacity-[0.03]">
+          <div
+            className="h-full w-full"
+            style={{
+              backgroundImage:
+                "linear-gradient(hsl(var(--foreground)) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--foreground)) 1px, transparent 1px)",
+              backgroundSize: "60px 60px",
+            }}
+          />
+        </div>
+
+        {/* Gradient orbs */}
+        <div className="absolute top-20 left-1/4 w-96 h-96 bg-primary/5 rounded-full blur-3xl" />
+        <div className="absolute top-40 right-1/4 w-80 h-80 bg-primary/3 rounded-full blur-3xl" />
+
+        <div className="max-w-4xl mx-auto text-center relative">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border bg-muted/50 text-xs text-muted-foreground mb-6">
+            <Sparkles className="h-3 w-3 text-primary" />
+            Open source database management
+          </div>
+
+          <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold tracking-tight leading-[1.1] mb-6">
+            The database tool
+            <br />
+            <span className="text-primary">you&apos;ll actually enjoy</span>
+          </h1>
+
+          <p className="text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto mb-10 leading-relaxed">
+            A modern, open-source alternative to DataGrip. Connect to any database,
+            write queries with intelligent autocomplete, and explore your data — all
+            from your browser.
+          </p>
+
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-16">
+            <Link
+              href="/app"
+              className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground font-medium rounded-xl hover:bg-primary/90 transition-all hover:shadow-lg hover:shadow-primary/20 text-sm"
+            >
+              Launch App
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+            <a
+              href="https://github.com/we-building-autonomously/muzli"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-6 py-3 border rounded-xl hover:bg-muted/50 transition-all text-sm font-medium"
+            >
+              <Github className="h-4 w-4" />
+              View on GitHub
+            </a>
+          </div>
+
+          {/* App preview */}
+          <div className="relative max-w-4xl mx-auto">
+            <div className="rounded-xl border bg-card shadow-2xl shadow-black/20 overflow-hidden">
+              {/* Window chrome */}
+              <div className="flex items-center gap-2 px-4 py-2.5 bg-muted/50 border-b">
+                <div className="flex gap-1.5">
+                  <div className="w-2.5 h-2.5 rounded-full bg-red-500/60" />
+                  <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/60" />
+                  <div className="w-2.5 h-2.5 rounded-full bg-green-500/60" />
                 </div>
-              ))}
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* Command palette */}
-      {showCommandPalette && (
-        <>
-          <div className="fixed inset-0 z-50 bg-background/60 backdrop-blur-sm" onClick={() => setShowCommandPalette(false)} />
-          <div className="fixed z-50 top-[20%] left-1/2 -translate-x-1/2 bg-popover border rounded-lg shadow-xl w-[420px] max-h-[400px] flex flex-col">
-            <div className="flex items-center gap-2 px-3 py-2 border-b">
-              <Search className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-              <input
-                autoFocus
-                value={cmdQuery}
-                onChange={(e) => setCmdQuery(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Escape") setShowCommandPalette(false); }}
-                placeholder="Search tables, connections, saved queries..."
-                className="flex-1 bg-transparent text-sm focus:outline-none"
-              />
-              <kbd className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded font-mono">ESC</kbd>
-            </div>
-            <div className="overflow-auto flex-1">
-              <CommandPaletteResults
-                query={cmdQuery}
-                dbMetadata={dbMetadata}
-                selectedConnection={selectedConnection}
-                connections={getConnections()}
-                onSelectTable={(schema, table) => {
-                  setDbContext({ schema, table });
-                  setShowCommandPalette(false);
-                }}
-                onSelectConnection={(conn) => {
-                  handleConnectionSelect(conn);
-                  setShowCommandPalette(false);
-                }}
-                onSelectSavedQuery={(q) => {
-                  // Will be handled by the editor via dbContext or direct state
-                  setShowCommandPalette(false);
-                }}
-              />
-            </div>
-          </div>
-        </>
-      )}
-
-      <div className="h-[calc(100vh-2.5rem)]">
-        <PanelGroup direction="horizontal">
-          <Panel defaultSize={25} minSize={20} maxSize={40}>
-            <Sidebar
-              selectedConnection={selectedConnection}
-              onConnectionSelect={handleConnectionSelect}
-              onTableSelect={handleTableSelect}
-              onVectorContextSelect={setVectorContext}
-              onDbContextSelect={setDbContext}
-              onDbTreeChange={setDbMetadata}
-              onPreviewTable={handlePreviewTable}
-              isLoading={isLoading}
-              setIsLoading={setIsLoading}
-              restoredConnectionId={restoredConnectionId}
-            />
-          </Panel>
-
-          <PanelResizeHandle className="w-1 bg-border hover:bg-accent transition-colors" />
-
-          <Panel defaultSize={75}>
-            <PanelGroup direction="vertical">
-              <Panel defaultSize={50} minSize={30}>
-                <div className="h-full flex flex-col">
-                  {/* Tab bar */}
-                  {selectedConnection && (
-                    <div className="flex items-center border-b bg-muted/30 overflow-x-auto">
-                      {tabs.map((tab) => (
-                        <div
-                          key={tab.id}
-                          className={`group flex items-center gap-1 px-3 py-1.5 text-xs cursor-pointer border-r border-border/50 transition-colors ${
-                            tab.id === activeTabId
-                              ? "bg-background text-foreground"
-                              : "text-muted-foreground hover:text-foreground hover:bg-background/50"
-                          }`}
-                          onClick={() => setActiveTabId(tab.id)}
-                          onDoubleClick={() => setEditingTabId(tab.id)}
-                        >
-                          {editingTabId === tab.id ? (
-                            <input
-                              autoFocus
-                              defaultValue={tab.label}
-                              className="bg-transparent text-xs w-20 outline-none border-b border-primary"
-                              onBlur={(e) => {
-                                const val = e.target.value.trim();
-                                if (val) setTabs((prev) => prev.map((t) => t.id === tab.id ? { ...t, label: val } : t));
-                                setEditingTabId(null);
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                                if (e.key === "Escape") setEditingTabId(null);
-                              }}
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                          ) : (
-                            <span className="truncate max-w-[100px]">{tab.label}</span>
-                          )}
-                          {tabs.length > 1 && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); closeTab(tab.id); }}
-                              className="opacity-0 group-hover:opacity-100 hover:text-red-400 transition-opacity ml-1"
-                            >
-                              <X className="h-3 w-3" />
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                      <button
-                        onClick={addTab}
-                        className="flex items-center px-2 py-1.5 text-muted-foreground hover:text-foreground transition-colors"
-                        title="New tab"
-                      >
-                        <Plus className="h-3 w-3" />
-                      </button>
+                <div className="flex-1 text-center">
+                  <span className="text-[10px] text-muted-foreground font-mono">
+                    muzli — localhost:3000
+                  </span>
+                </div>
+              </div>
+              {/* Mock IDE interface */}
+              <div className="flex h-[340px] sm:h-[400px]">
+                {/* Sidebar mock */}
+                <div className="w-52 border-r bg-muted/20 p-3 hidden sm:block">
+                  <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-3">
+                    Connections
+                  </div>
+                  {["Production DB", "Staging DB", "Analytics"].map((name, i) => (
+                    <div
+                      key={name}
+                      className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs mb-1 ${
+                        i === 0
+                          ? "bg-primary/10 text-primary"
+                          : "text-muted-foreground"
+                      }`}
+                    >
+                      <Database className="h-3 w-3" />
+                      {name}
                     </div>
+                  ))}
+                  <div className="mt-4 text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                    Tables
+                  </div>
+                  {["users", "orders", "products", "sessions", "analytics"].map(
+                    (t) => (
+                      <div
+                        key={t}
+                        className="flex items-center gap-2 px-2 py-1 text-xs text-muted-foreground"
+                      >
+                        <Table2 className="h-3 w-3" />
+                        {t}
+                      </div>
+                    )
                   )}
-                  <div className="flex-1 min-h-0">
-                    <Editor
-                      key={activeTabId}
-                      selectedConnection={selectedConnection}
-                      onQueryExecute={handleQueryExecute}
-                      onError={handleQueryError}
-                      isLoading={isLoading}
-                      setIsLoading={setIsLoading}
-                      vectorContext={vectorContext}
-                      dbContext={dbContext}
-                      dbMetadata={dbMetadata}
-                      isDark={isDark}
-                      initialQuery={activeTab.query || undefined}
-                      onQueryChange={(q) => updateActiveTab({ query: q })}
-                    />
+                </div>
+                {/* Editor + results mock */}
+                <div className="flex-1 flex flex-col">
+                  {/* Tab bar */}
+                  <div className="flex items-center border-b bg-muted/30 px-1">
+                    <div className="px-3 py-1.5 text-[10px] bg-background border-b-2 border-primary text-foreground">
+                      Query 1
+                    </div>
+                    <div className="px-3 py-1.5 text-[10px] text-muted-foreground">
+                      Query 2
+                    </div>
+                  </div>
+                  {/* Editor */}
+                  <div className="flex-1 p-4 font-mono text-xs leading-relaxed">
+                    <div>
+                      <span className="text-blue-400">SELECT</span>{" "}
+                      <span className="text-foreground">u.name, u.email,</span>
+                    </div>
+                    <div>
+                      {"  "}
+                      <span className="text-blue-400">COUNT</span>
+                      <span className="text-foreground">(o.id)</span>{" "}
+                      <span className="text-blue-400">AS</span>{" "}
+                      <span className="text-foreground">order_count</span>
+                    </div>
+                    <div>
+                      <span className="text-blue-400">FROM</span>{" "}
+                      <span className="text-emerald-400">users</span>{" "}
+                      <span className="text-foreground">u</span>
+                    </div>
+                    <div>
+                      <span className="text-blue-400">LEFT JOIN</span>{" "}
+                      <span className="text-emerald-400">orders</span>{" "}
+                      <span className="text-foreground">o</span>{" "}
+                      <span className="text-blue-400">ON</span>{" "}
+                      <span className="text-foreground">u.id = o.user_id</span>
+                    </div>
+                    <div>
+                      <span className="text-blue-400">GROUP BY</span>{" "}
+                      <span className="text-foreground">u.name, u.email</span>
+                    </div>
+                    <div>
+                      <span className="text-blue-400">ORDER BY</span>{" "}
+                      <span className="text-foreground">order_count</span>{" "}
+                      <span className="text-blue-400">DESC</span>
+                    </div>
+                    <div>
+                      <span className="text-blue-400">LIMIT</span>{" "}
+                      <span className="text-amber-400">25</span>
+                      <span className="text-foreground">;</span>
+                    </div>
+                  </div>
+                  {/* Results bar */}
+                  <div className="border-t">
+                    <div className="flex items-center gap-3 px-3 py-1.5 text-[10px] text-muted-foreground bg-muted/30">
+                      <span className="text-emerald-400">25 rows</span>
+                      <span>12ms</span>
+                      <span>Query 1 of 1</span>
+                    </div>
+                    {/* Results table mock */}
+                    <div className="overflow-hidden">
+                      <table className="w-full text-[10px]">
+                        <thead>
+                          <tr className="bg-muted/40 text-muted-foreground">
+                            <th className="text-left px-3 py-1.5 font-medium">name</th>
+                            <th className="text-left px-3 py-1.5 font-medium">email</th>
+                            <th className="text-left px-3 py-1.5 font-medium">order_count</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {[
+                            ["Alice Chen", "alice@example.com", "142"],
+                            ["Bob Smith", "bob@example.com", "98"],
+                            ["Carol Wu", "carol@example.com", "87"],
+                          ].map(([name, email, count], i) => (
+                            <tr key={i} className="border-t border-border/50">
+                              <td className="px-3 py-1.5">{name}</td>
+                              <td className="px-3 py-1.5 text-muted-foreground">{email}</td>
+                              <td className="px-3 py-1.5 text-primary">{count}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
-              </Panel>
+              </div>
+            </div>
 
-              <PanelResizeHandle className="h-1 bg-border hover:bg-accent transition-colors" />
+            {/* Decorative glow under preview */}
+            <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 w-3/4 h-16 bg-primary/10 blur-3xl rounded-full" />
+          </div>
+        </div>
 
-              <Panel defaultSize={50} minSize={30}>
-                <Results
-                  queryResult={activeTab.queryResult}
-                  tableData={activeTab.tableData}
-                  isLoading={isLoading}
-                  connectionType={selectedConnection?.type}
-                  error={activeTab.error}
-                />
-              </Panel>
-            </PanelGroup>
-          </Panel>
-        </PanelGroup>
-      </div>
+        {/* Scroll indicator */}
+        <div className="flex justify-center mt-16">
+          <a href="#features" className="animate-bounce text-muted-foreground/50">
+            <ChevronDown className="h-5 w-5" />
+          </a>
+        </div>
+      </section>
+
+      {/* Features */}
+      <section id="features" className="py-24 px-6">
+        <div className="max-w-5xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight mb-4">
+              Everything you need, nothing you don&apos;t
+            </h2>
+            <p className="text-muted-foreground text-lg max-w-xl mx-auto">
+              Built for developers who want a fast, reliable database tool without the bloat.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {features.map((feature) => (
+              <div
+                key={feature.title}
+                className="group p-6 rounded-xl border bg-card hover:bg-muted/30 transition-all hover:shadow-md hover:border-primary/20"
+              >
+                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-primary/15 transition-colors">
+                  <feature.icon className="h-5 w-5 text-primary" />
+                </div>
+                <h3 className="font-semibold text-sm mb-2">{feature.title}</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  {feature.description}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Keyboard shortcuts section */}
+      <section className="py-24 px-6 border-t">
+        <div className="max-w-5xl mx-auto">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+            <div>
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border bg-muted/50 text-xs text-muted-foreground mb-4">
+                <Command className="h-3 w-3 text-primary" />
+                Keyboard-first
+              </div>
+              <h2 className="text-3xl font-bold tracking-tight mb-4">
+                Built for speed
+              </h2>
+              <p className="text-muted-foreground mb-8 leading-relaxed">
+                Every action has a keyboard shortcut. Command palette for instant
+                navigation. Multi-tab editing. Your hands never leave the keyboard.
+              </p>
+              <div className="space-y-3">
+                {shortcuts.map((s) => (
+                  <div key={s.keys} className="flex items-center gap-4">
+                    <kbd className="inline-flex items-center px-2.5 py-1 bg-muted rounded-md text-xs font-mono min-w-[120px]">
+                      {s.keys}
+                    </kbd>
+                    <span className="text-sm text-muted-foreground">{s.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="relative">
+              <div className="rounded-xl border bg-card p-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <Search className="h-4 w-4 text-muted-foreground" />
+                  <div className="flex-1 h-8 rounded-md bg-muted/50 flex items-center px-3">
+                    <span className="text-xs text-muted-foreground">
+                      Search tables, connections, queries...
+                    </span>
+                  </div>
+                  <kbd className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded font-mono">
+                    Ctrl+K
+                  </kbd>
+                </div>
+                <div className="space-y-1">
+                  {[
+                    { icon: Database, label: "Production DB", type: "connection", color: "text-blue-400" },
+                    { icon: Table2, label: "users", type: "table", color: "text-emerald-400" },
+                    { icon: Table2, label: "user_sessions", type: "table", color: "text-emerald-400" },
+                  ].map((item, i) => (
+                    <div
+                      key={i}
+                      className={`flex items-center gap-3 px-3 py-2 rounded-md text-xs ${
+                        i === 0 ? "bg-muted/50" : ""
+                      }`}
+                    >
+                      <item.icon className={`h-3.5 w-3.5 ${item.color}`} />
+                      <span className="flex-1">{item.label}</span>
+                      <span className="text-[10px] text-muted-foreground">{item.type}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="absolute -bottom-4 -right-4 w-32 h-32 bg-primary/5 rounded-full blur-2xl" />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Platforms */}
+      <section className="py-24 px-6 border-t">
+        <div className="max-w-3xl mx-auto text-center">
+          <h2 className="text-3xl font-bold tracking-tight mb-4">
+            Run it anywhere
+          </h2>
+          <p className="text-muted-foreground mb-12 text-lg">
+            Web app in your browser, or native desktop app for Mac, Windows, and Linux.
+          </p>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-6">
+            {[
+              { icon: Globe, label: "Web App", desc: "No install needed" },
+              { icon: Monitor, label: "Desktop App", desc: "Native performance" },
+            ].map((platform) => (
+              <div
+                key={platform.label}
+                className="flex items-center gap-4 px-6 py-4 rounded-xl border bg-card min-w-[220px]"
+              >
+                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <platform.icon className="h-5 w-5 text-primary" />
+                </div>
+                <div className="text-left">
+                  <div className="font-medium text-sm">{platform.label}</div>
+                  <div className="text-xs text-muted-foreground">{platform.desc}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* CTA */}
+      <section className="py-24 px-6 border-t">
+        <div className="max-w-2xl mx-auto text-center">
+          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight mb-4">
+            Ready to try it?
+          </h2>
+          <p className="text-muted-foreground text-lg mb-8">
+            No sign-up. No credit card. Just connect your database and go.
+          </p>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+            <Link
+              href="/app"
+              className="inline-flex items-center gap-2 px-8 py-3 bg-primary text-primary-foreground font-medium rounded-xl hover:bg-primary/90 transition-all hover:shadow-lg hover:shadow-primary/20 text-sm"
+            >
+              Launch App
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+            <a
+              href="https://github.com/we-building-autonomously/muzli"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-6 py-3 border rounded-xl hover:bg-muted/50 transition-all text-sm"
+            >
+              <Github className="h-4 w-4" />
+              Star on GitHub
+            </a>
+          </div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="border-t py-8 px-6">
+        <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <div className="h-6 w-6 rounded-md bg-primary flex items-center justify-center">
+              <Database className="h-3 w-3 text-primary-foreground" />
+            </div>
+            <span className="text-sm font-medium">Muzli</span>
+            <span className="text-xs text-muted-foreground">
+              — Open source database management
+            </span>
+          </div>
+          <div className="flex items-center gap-6 text-xs text-muted-foreground">
+            <a
+              href="https://github.com/we-building-autonomously/muzli"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-foreground transition-colors"
+            >
+              GitHub
+            </a>
+            <a href="#features" className="hover:text-foreground transition-colors">
+              Features
+            </a>
+            <span>MIT License</span>
+          </div>
+        </div>
+      </footer>
     </div>
-  );
-}
-
-export default function Home() {
-  return (
-    <QueryProvider>
-      <ToastProvider>
-        <MuzliApp />
-      </ToastProvider>
-    </QueryProvider>
   );
 }
