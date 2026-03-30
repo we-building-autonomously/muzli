@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Plus, Database, Loader2, ChevronRight, ChevronDown, Layers, FolderOpen, Table2, Hash, Upload, Download } from "lucide-react";
+import { Plus, Database, Loader2, ChevronRight, ChevronDown, Layers, FolderOpen, Table2, Hash, Upload, Download, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConnectionDialog } from "@/components/dialogs/ConnectionDialog";
 import { apiClient } from "@/api/client";
@@ -77,6 +77,9 @@ export function Sidebar({
 
   // Connection status (tested on expand)
   const [connectionStatus, setConnectionStatus] = useState<Record<string, "connected" | "error">>({});
+
+  // Sidebar search
+  const [sidebarSearch, setSidebarSearch] = useState("");
 
   // Editing
   const [editingConnection, setEditingConnection] = useState<DatabaseConnection | null>(null);
@@ -389,8 +392,39 @@ export function Sidebar({
         </div>
       </div>
 
+      {connections.length > 3 && (
+        <div className="px-2 py-1.5 border-b">
+          <div className="flex items-center gap-1.5 px-2 py-1 bg-muted/50 rounded-md">
+            <Search className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+            <input
+              value={sidebarSearch}
+              onChange={(e) => setSidebarSearch(e.target.value)}
+              placeholder="Filter..."
+              className="flex-1 bg-transparent text-xs focus:outline-none placeholder:text-muted-foreground/50"
+            />
+            {sidebarSearch && (
+              <button onClick={() => setSidebarSearch("")} className="text-muted-foreground hover:text-foreground">
+                <X className="h-3 w-3" />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="flex-1 overflow-auto p-1.5">
-        {connections.map((connection) => {
+        {connections.filter((c) => {
+          if (!sidebarSearch) return true;
+          const q = sidebarSearch.toLowerCase();
+          if (c.name.toLowerCase().includes(q) || c.type.includes(q)) return true;
+          // Also match table names within expanded connections
+          const schema = schemaData[c.id];
+          if (schema) {
+            return schema.schemas.some((s) =>
+              s.tables.some((t) => t.name.toLowerCase().includes(q))
+            );
+          }
+          return false;
+        }).map((connection) => {
           const icon = DB_ICONS[connection.type] || "🗄️";
           const isExpanded = expandedConnections.has(connection.id);
           const isVector = isVectorDb(connection.type);
@@ -724,6 +758,16 @@ export function Sidebar({
               }}
             >
               Copy DROP TABLE
+            </button>
+            <button
+              className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted transition-colors"
+              onClick={() => {
+                const schemaPrefix = tableMenu.schema ? `"${tableMenu.schema}".` : "";
+                navigator.clipboard.writeText(`SELECT COUNT(*) FROM ${schemaPrefix}"${tableMenu.table.name}";`);
+                setTableMenu(null);
+              }}
+            >
+              Copy SELECT COUNT(*)
             </button>
           </div>
         </>

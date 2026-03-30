@@ -6,6 +6,27 @@ import type { QueryResult, TableData, VectorData } from "@/types";
 import { formatDuration } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 
+function getErrorSuggestion(error: string): string | null {
+  const e = error.toLowerCase();
+  if (e.includes("column") && (e.includes("not found") || e.includes("does not exist") || e.includes("unknown")))
+    return "Check the column name for typos. Use the sidebar to see available columns, or try SELECT * to see all columns.";
+  if (e.includes("table") && (e.includes("not found") || e.includes("does not exist") || e.includes("unknown")))
+    return "Check the table name. You may need to qualify it with the schema name (e.g., \"public\".\"table_name\").";
+  if (e.includes("syntax error"))
+    return "Check your SQL syntax. Try using the Format button to clean up the query, or use a Snippet template as a starting point.";
+  if (e.includes("permission denied") || e.includes("access denied"))
+    return "The database user doesn't have permission for this operation. Check your connection credentials.";
+  if (e.includes("connection refused") || e.includes("connection reset") || e.includes("timeout"))
+    return "Can't reach the database. Check that the host, port, and credentials are correct, and that the server is running.";
+  if (e.includes("duplicate key") || e.includes("unique constraint"))
+    return "A row with this key already exists. Use UPDATE instead of INSERT, or add ON CONFLICT handling.";
+  if (e.includes("null") && (e.includes("not null") || e.includes("violates")))
+    return "A required column is missing a value. Make sure all NOT NULL columns have values in your INSERT/UPDATE.";
+  if (e.includes("relation") && e.includes("does not exist"))
+    return "The table doesn't exist. Check the schema prefix and table name. Use the sidebar to browse available tables.";
+  return null;
+}
+
 function ColumnTypeIcon({ type }: { type: string }) {
   const t = type.toLowerCase();
   if (t.includes("key") || t === "id") return <Key className="h-3 w-3 text-amber-400/70" />;
@@ -128,6 +149,42 @@ function CopyableCell({ value, children }: { value: unknown; children: React.Rea
   );
 }
 
+function TextCell({ value }: { value: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+  const isLong = value.length > 100;
+
+  if (!isLong) return <span>{value}</span>;
+
+  const handleExpand = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const rect = (e.target as HTMLElement).getBoundingClientRect();
+    const x = Math.min(rect.left, window.innerWidth - 360);
+    const y = rect.bottom + 4 > window.innerHeight - 200 ? rect.top - 200 : rect.bottom + 4;
+    setPos({ x, y });
+    setExpanded(!expanded);
+  };
+
+  return (
+    <>
+      <span className="cursor-pointer" onClick={handleExpand}>
+        {value.slice(0, 100)}<span className="text-muted-foreground">...</span>
+      </span>
+      {expanded && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setExpanded(false)} />
+          <div
+            className="fixed z-50 bg-popover border rounded-md shadow-lg w-[340px] max-h-48 overflow-auto p-3"
+            style={{ left: pos.x, top: pos.y }}
+          >
+            <pre className="text-[11px] text-foreground whitespace-pre-wrap break-words">{value}</pre>
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
 interface ResultsProps {
   queryResult: QueryResult | null;
   tableData: TableData | null;
@@ -218,6 +275,7 @@ export function Results({ queryResult, tableData, isLoading, connectionType, err
   }
 
   if (error) {
+    const suggestion = getErrorSuggestion(error);
     return (
       <div className="h-full flex flex-col">
         <div className="flex items-center gap-2 px-3 h-10 border-b">
@@ -228,6 +286,12 @@ export function Results({ queryResult, tableData, isLoading, connectionType, err
           <div className="text-center max-w-md px-4">
             <AlertCircle className="h-6 w-6 mx-auto mb-1.5 text-red-400" />
             <p className="text-sm text-red-400 break-words">{error}</p>
+            {suggestion && (
+              <div className="mt-3 px-3 py-2 bg-muted/50 rounded-md border border-border/50 text-left">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Suggestion</p>
+                <p className="text-xs text-foreground">{suggestion}</p>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -484,7 +548,7 @@ export function Results({ queryResult, tableData, isLoading, connectionType, err
                             ) : typeof value === "number" ? (
                               <span className="text-orange-400">{value}</span>
                             ) : (
-                              <span>{String(value)}</span>
+                              <TextCell value={String(value)} />
                             )}
                           </CopyableCell>
                         </td>
