@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useMemo, useCallback, lazy, Suspense } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense } from "react";
 import { BarChart3, Table, Loader2, AlertCircle, Box, Copy, Check, Download, Search, ArrowUp, ArrowDown, X, Hash, Type, Key, Braces, Calendar, ToggleLeft } from "lucide-react";
 import type { QueryResult, TableData, VectorData } from "@/types";
 import { formatDuration } from "@/lib/utils";
+import { useToast } from "@/components/ui/toast";
 
 function ColumnTypeIcon({ type }: { type: string }) {
   const t = type.toLowerCase();
@@ -139,12 +140,27 @@ interface ResultsProps {
 type SortDir = "asc" | "desc";
 
 export function Results({ queryResult, tableData, isLoading, connectionType, error, onPageChange }: ResultsProps) {
+  const { toast } = useToast();
   const [view, setView] = useState<"table" | "3d">("table");
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
   const [rowMenu, setRowMenu] = useState<{ x: number; y: number; row: Record<string, unknown> } | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (isLoading) {
+      setElapsed(0);
+      const start = Date.now();
+      timerRef.current = setInterval(() => setElapsed(Date.now() - start), 100);
+    } else {
+      if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    }
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [isLoading]);
+
   const data = queryResult || tableData;
 
   const isVectorDb = connectionType === "pinecone" || connectionType === "turbopuffer";
@@ -183,14 +199,18 @@ export function Results({ queryResult, tableData, isLoading, connectionType, err
   if (isLoading) {
     return (
       <div className="h-full flex flex-col">
-        <div className="flex items-center gap-2 px-3 h-10 border-b">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          <span className="text-sm">Executing query...</span>
+        <div className="flex items-center justify-between px-3 h-10 border-b">
+          <div className="flex items-center gap-2">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            <span className="text-sm">Executing query...</span>
+          </div>
+          <span className="text-xs text-muted-foreground font-mono">{(elapsed / 1000).toFixed(1)}s</span>
         </div>
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center text-muted-foreground">
             <Loader2 className="h-6 w-6 mx-auto mb-1.5 animate-spin" />
             <p className="text-sm">Running query...</p>
+            <p className="text-xs mt-1 font-mono">{(elapsed / 1000).toFixed(1)}s</p>
           </div>
         </div>
       </div>
@@ -330,14 +350,14 @@ export function Results({ queryResult, tableData, isLoading, connectionType, err
           {rows.length > 0 && (
             <div className="flex items-center gap-0.5 ml-1 border-l pl-2 border-border/50">
               <button
-                onClick={() => exportCsv(columns, rows)}
+                onClick={() => { exportCsv(columns, rows); toast("Exported as CSV"); }}
                 className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] hover:bg-muted transition-colors"
                 title="Export as CSV"
               >
                 <Download className="h-3 w-3" />CSV
               </button>
               <button
-                onClick={() => exportJson(rows)}
+                onClick={() => { exportJson(rows); toast("Exported as JSON"); }}
                 className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] hover:bg-muted transition-colors"
                 title="Export as JSON"
               >
@@ -491,6 +511,7 @@ export function Results({ queryResult, tableData, isLoading, connectionType, err
               onClick={() => {
                 navigator.clipboard.writeText(JSON.stringify(rowMenu.row, null, 2));
                 setRowMenu(null);
+                toast("Copied as JSON");
               }}
             >
               <Copy className="h-3 w-3" />Copy as JSON
@@ -508,6 +529,7 @@ export function Results({ queryResult, tableData, isLoading, connectionType, err
                 const sql = `INSERT INTO table_name (${cols.join(", ")}) VALUES (${vals.join(", ")});`;
                 navigator.clipboard.writeText(sql);
                 setRowMenu(null);
+                toast("Copied as INSERT");
               }}
             >
               <Copy className="h-3 w-3" />Copy as INSERT
@@ -521,6 +543,7 @@ export function Results({ queryResult, tableData, isLoading, connectionType, err
                 });
                 navigator.clipboard.writeText(vals.join("\t"));
                 setRowMenu(null);
+                toast("Copied as TSV");
               }}
             >
               <Copy className="h-3 w-3" />Copy as TSV

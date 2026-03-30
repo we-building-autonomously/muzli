@@ -9,6 +9,7 @@ import { apiClient } from "@/api/client";
 import { registerSqlCompletionProvider, type DbMetadata } from "@/lib/sql-autocomplete";
 import { getQueryHistory, addQueryToHistory, clearQueryHistory, type QueryHistoryEntry } from "@/lib/query-history";
 import { getSavedQueries, saveQuery, deleteSavedQuery, type SavedQuery } from "@/lib/saved-queries";
+import { useToast } from "@/components/ui/toast";
 import { formatDuration } from "@/lib/utils";
 import type { DatabaseConnection, QueryResult, VectorSearchContext, DbContext } from "@/types";
 
@@ -142,6 +143,7 @@ export function Editor({
   initialQuery,
   onQueryChange,
 }: EditorProps) {
+  const { toast } = useToast();
   const isMongo = selectedConnection?.type === "mongodb";
   const isPinecone = selectedConnection?.type === "pinecone";
   const isTurbopuffer = selectedConnection?.type === "turbopuffer";
@@ -445,6 +447,7 @@ export function Editor({
                     saveQuery(selectedConnection.id, saveName.trim(), query);
                     setSaved(getSavedQueries(selectedConnection.id));
                     setSaveDialogOpen(false);
+                    toast(`Saved "${saveName.trim()}"`);
                   }
                   if (e.key === "Escape") setSaveDialogOpen(false);
                 }}
@@ -459,6 +462,7 @@ export function Editor({
                     saveQuery(selectedConnection.id, saveName.trim(), query);
                     setSaved(getSavedQueries(selectedConnection.id));
                     setSaveDialogOpen(false);
+                    toast(`Saved "${saveName.trim()}"`);
                   }}
                   disabled={!saveName.trim()}
                   className="text-xs bg-primary text-primary-foreground px-3 py-1 rounded hover:bg-primary/90 transition-colors disabled:opacity-50"

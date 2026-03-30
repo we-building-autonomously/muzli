@@ -67,6 +67,9 @@ export function Sidebar({
   // UI expand state per connection
   const [treeState, setTreeState] = useState<Record<string, TreeState>>({});
 
+  // Table context menu
+  const [tableMenu, setTableMenu] = useState<{ x: number; y: number; schema: string; table: { name: string; columns: { name: string; dataType: string; isPrimaryKey: boolean }[] } } | null>(null);
+
   // Vector DB state
   const [vectorTree, setVectorTree] = useState<Record<string, IndexInfo[]>>({});
   const [loadingTree, setLoadingTree] = useState<Set<string>>(new Set());
@@ -475,6 +478,7 @@ export function Sidebar({
                                     className="flex items-center gap-1.5 py-1 px-2 rounded-md cursor-pointer text-xs hover:bg-muted/50"
                                     onClick={(e) => { e.stopPropagation(); toggleTable(connection.id, tableKey); onDbContextSelect?.({ schema: s.name, table: t.name }); }}
                                     onDoubleClick={(e) => { e.stopPropagation(); onPreviewTable?.(s.name, t.name); }}
+                                    onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setTableMenu({ x: e.clientX, y: e.clientY, schema: s.name, table: t }); }}
                                   >
                                     {tableExpanded ? <ChevronDown className="h-3 w-3 text-muted-foreground flex-shrink-0" /> : <ChevronRight className="h-3 w-3 text-muted-foreground flex-shrink-0" />}
                                     <Table2 className="h-3 w-3 text-blue-400/70 flex-shrink-0" />
@@ -673,6 +677,54 @@ export function Sidebar({
                 </>
               );
             })()}
+          </div>
+        </>
+      )}
+
+      {/* Table context menu */}
+      {tableMenu && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setTableMenu(null)} />
+          <div
+            className="fixed z-50 bg-popover border rounded-md shadow-lg py-1 min-w-[160px]"
+            style={{ left: tableMenu.x, top: tableMenu.y }}
+          >
+            <button
+              className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted transition-colors"
+              onClick={() => {
+                const t = tableMenu.table;
+                const schemaPrefix = tableMenu.schema ? `"${tableMenu.schema}".` : "";
+                const cols = t.columns.map((c) => {
+                  let def = `  "${c.name}" ${c.dataType.toUpperCase()}`;
+                  if (c.isPrimaryKey) def += " PRIMARY KEY";
+                  return def;
+                }).join(",\n");
+                const ddl = `CREATE TABLE ${schemaPrefix}"${t.name}" (\n${cols}\n);`;
+                navigator.clipboard.writeText(ddl);
+                setTableMenu(null);
+              }}
+            >
+              Copy CREATE TABLE
+            </button>
+            <button
+              className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted transition-colors"
+              onClick={() => {
+                const schemaPrefix = tableMenu.schema ? `"${tableMenu.schema}".` : "";
+                navigator.clipboard.writeText(`SELECT * FROM ${schemaPrefix}"${tableMenu.table.name}"\nLIMIT 100;`);
+                setTableMenu(null);
+              }}
+            >
+              Copy SELECT query
+            </button>
+            <button
+              className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted transition-colors"
+              onClick={() => {
+                navigator.clipboard.writeText(`DROP TABLE IF EXISTS "${tableMenu.schema}"."${tableMenu.table.name}";`);
+                setTableMenu(null);
+              }}
+            >
+              Copy DROP TABLE
+            </button>
           </div>
         </>
       )}
